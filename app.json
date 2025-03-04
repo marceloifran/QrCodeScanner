@@ -1,17 +1,16 @@
 {
   "expo": {
-    "name": "camera",
-    "slug": "camera",
+    "name": "Kiosko App",
+    "slug": "kiosko-app",
     "version": "1.0.0",
     "plugins": [
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera",
-          "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone",
-          "recordAudioAndroid": true
+          "cameraPermission": "Permitir que $(PRODUCT_NAME) acceda a tu cámara."
         }
-      ]
+      ],
+      "expo-barcode-scanner"
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,17 +20,33 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tuempresa.kioskoapp",
+      "buildNumber": "1.0.0"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.marceloifran.kioskoapp",
+      "permissions": [
+        "CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "sdkVersion": "52.0.0",
+    "newArchEnabled": true,
+    "extra": {
+      "eas": {
+        "projectId": "c418f4af-b5b3-476e-97b8-3d17c2637b79"
+      }
     }
   }
 }

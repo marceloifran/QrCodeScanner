@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "version": ">=15.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "android": {
+        "buildType": "apk",
+        "image": "default",
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
+          "ANDROID_NDK_HOME": "/opt/android-ndk",
+          "GRADLE_OPTS": "-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64"
+        },
+        "gradleCommand": ":app:assembleRelease",
+        "autoIncrement": true,
+        "distribution": "internal",
+        "node": "18.17.0"
+      }
+    },
+    "production": {}
+  },
+  "submit": {
+    "production": {}
+  }
+} 
