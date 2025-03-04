@@ -11,16 +11,15 @@
     "preview": {
       "android": {
         "buildType": "apk",
-        "image": "default",
-        "env": {
-          "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk-amd64",
-          "ANDROID_NDK_HOME": "/opt/android-ndk",
-          "GRADLE_OPTS": "-Dorg.gradle.java.home=/usr/lib/jvm/java-17-openjdk-amd64"
-        },
+        "image": "latest",
         "gradleCommand": ":app:assembleRelease",
-        "autoIncrement": true,
-        "distribution": "internal",
-        "node": "18.17.0"
+        "env": {
+          "COMPOSE_KOTLIN_COMPILER_ARGS": "-suppressKotlinVersionCompatibilityCheck",
+          "KOTLIN_COMPILER_ARGS": "-Xskip-prerelease-check -Xsuppress-version-warnings",
+          "KOTLIN_COMPILER_EXECUTION_STRATEGY": "in-process",
+          "KOTLIN_INCREMENTAL": "false"
+        },
+        "prebuildCommand": "cp -f ./android/patches/expo-modules-core-build.gradle ./node_modules/expo-modules-core/android/build.gradle"
       }
     },
     "production": {}

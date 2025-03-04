@@ -1,0 +1,66 @@
+// Reemplazar completamente el archivo build.gradle de expo-modules-core
+// Versión sin Compose y con Kotlin forzado a 1.7.20
+
+plugins {
+    id 'com.android.library'
+    id 'kotlin-android'
+}
+
+// Forzar la versión de Kotlin
+buildscript {
+    ext.kotlin_version = '1.7.20'
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+android {
+    compileSdkVersion 34
+    
+    defaultConfig {
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0"
+    }
+    
+    // Desactivar completamente Compose
+    buildFeatures {
+        compose false
+    }
+    
+    kotlinOptions {
+        jvmTarget = '1.8'
+        // Suprimir todas las verificaciones de compatibilidad
+        freeCompilerArgs += [
+            "-Xskip-prerelease-check",
+            "-Xsuppress-version-warnings",
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
+        ]
+    }
+}
+
+// Forzar la versión de Kotlin para todas las tareas
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        kotlinVersion = "1.7.20"
+        apiVersion = "1.7"
+        languageVersion = "1.7"
+        freeCompilerArgs += [
+            "-Xskip-prerelease-check",
+            "-Xsuppress-version-warnings",
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
+        ]
+    }
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.7.20"
+    // Eliminar todas las dependencias de Compose
+} 

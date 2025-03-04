@@ -1,25 +1,24 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
-
 buildscript {
     ext {
-        buildToolsVersion = findProperty('android.buildToolsVersion') ?: '33.0.0'
-        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '21')
-        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '33')
-        targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '33')
-        kotlinVersion = findProperty('android.kotlinVersion') ?: '1.8.0'
+        buildToolsVersion = "34.0.0"
+        minSdkVersion = 21
+        compileSdkVersion = 34
+        targetSdkVersion = 34
+        kotlinVersion = "1.7.20"
+
+        // Especificar Java 17
+        JavaVersion.VERSION_17
 
         ndkVersion = "26.1.10909125"
-
-        // Especificar versión de Java
-        JavaVersion.VERSION_17
     }
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath('com.android.tools.build:gradle:8.1.0')
-        classpath('com.facebook.react:react-native-gradle-plugin')
+        classpath("com.android.tools.build:gradle:7.2.1")
+        classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
     }
 }
@@ -36,9 +35,32 @@ allprojects {
             // Android JSC is installed from npm
             url(new File(['node', '--print', "require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim(), '../dist'))
         }
-
         google()
         mavenCentral()
         maven { url 'https://www.jitpack.io' }
+    }
+}
+
+subprojects {
+    configurations.all {
+        resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == "org.jetbrains.kotlin") {
+                // Si la versión solicitada está vacía o nula, forzamos la versión definida
+                if (!details.requested.version?.trim()) {
+                    details.useVersion rootProject.ext.kotlinVersion
+                } else {
+                    details.useVersion rootProject.ext.kotlinVersion
+                }
+            }
+        }
+    }
+}
+
+allprojects {
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = '17'
+            freeCompilerArgs += ["-Xskip-metadata-version-check"]
+        }
     }
 }
