@@ -1,23 +1,24 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+
 buildscript {
     ext {
-        buildToolsVersion = "34.0.0"
+        buildToolsVersion = "33.0.0"
         minSdkVersion = 24
-        compileSdkVersion = 34
-        targetSdkVersion = 34
+        compileSdkVersion = 33
+        targetSdkVersion = 33
         kotlinVersion = "1.7.20"
-
-        // Especificar Java 17
-        JavaVersion.VERSION_17
-
-        ndkVersion = "26.1.10909125"
+        
+        // Especificar Java 11 para compatibilidad
+        javaVersion = JavaVersion.VERSION_11
+        
+        ndkVersion = "25.1.8937393"
     }
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle:7.2.1")
+        classpath("com.android.tools.build:gradle:7.4.2")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
     }
@@ -35,31 +36,44 @@ allprojects {
             // Android JSC is installed from npm
             url(new File(['node', '--print', "require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim(), '../dist'))
         }
+
         google()
         mavenCentral()
         maven { url 'https://www.jitpack.io' }
     }
 }
+// @generated begin expo-camera-import - expo prebuild (DO NOT MODIFY) sync-f244f4f3d8bf7229102e8f992b525b8602c74770
+def expoCameraMavenPath = new File(["node", "--print", "require.resolve('expo-camera/package.json')"].execute(null, rootDir).text.trim(), "../android/maven")
+allprojects { repositories { maven { url(expoCameraMavenPath) } } }
+// @generated end expo-camera-import
 
+// Configuración para manejar problemas de compatibilidad de Kotlin
 subprojects {
-    configurations.all {
-        resolutionStrategy.eachDependency { details ->
-            if (details.requested.group == "org.jetbrains.kotlin") {
-                details.useVersion rootProject.ext.kotlinVersion
+    afterEvaluate { project ->
+        if (project.hasProperty("android")) {
+            android {
+                compileOptions {
+                    sourceCompatibility rootProject.ext.javaVersion
+                    targetCompatibility rootProject.ext.javaVersion
+                }
+                
+                kotlinOptions {
+                    jvmTarget = rootProject.ext.javaVersion.toString()
+                    freeCompilerArgs += [
+                        "-Xskip-metadata-version-check",
+                        "-Xsuppress-version-warnings"
+                    ]
+                }
             }
         }
-    }
-}
-
-allprojects {
-    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-        kotlinOptions {
-            jvmTarget = '17'
-            freeCompilerArgs += [
-                "-Xskip-metadata-version-check",
-                "-P",
-                //"plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=1.7.20"
-            ]
+        
+        // Forzar la versión de Kotlin para todas las dependencias
+        project.configurations.all {
+            resolutionStrategy.eachDependency { details ->
+                if (details.requested.group == "org.jetbrains.kotlin") {
+                    details.useVersion rootProject.ext.kotlinVersion
+                }
+            }
         }
     }
 }
