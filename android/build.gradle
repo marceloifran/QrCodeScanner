@@ -5,7 +5,7 @@ buildscript {
         minSdkVersion = 24
         compileSdkVersion = 34
         targetSdkVersion = 34
-        kotlinVersion = "1.7.20"
+        kotlinVersion = "1.9.24"
 
         // Especificar Java 17
         JavaVersion.VERSION_17
@@ -57,7 +57,6 @@ allprojects {
             jvmTarget = '17'
             freeCompilerArgs += [
                 "-Xskip-metadata-version-check",
-                "-P",
                 //"plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=1.7.20"
             ]
         }
