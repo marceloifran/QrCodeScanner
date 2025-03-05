@@ -14,7 +14,6 @@
         "image": "latest",
         "gradleCommand": ":app:assembleRelease",
         "env": {
-          "COMPOSE_KOTLIN_COMPILER_ARGS": "-suppressKotlinVersionCompatibilityCheck",
           "KOTLIN_COMPILER_ARGS": "-Xskip-prerelease-check -Xsuppress-version-warnings",
           "KOTLIN_COMPILER_EXECUTION_STRATEGY": "in-process",
           "KOTLIN_INCREMENTAL": "false"

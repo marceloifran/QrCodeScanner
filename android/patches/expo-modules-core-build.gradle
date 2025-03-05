@@ -40,7 +40,7 @@ android {
             "-Xskip-prerelease-check",
             "-Xsuppress-version-warnings",
             "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
+            //"plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
         ]
     }
 }
@@ -55,7 +55,7 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
             "-Xskip-prerelease-check",
             "-Xsuppress-version-warnings",
             "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
+            //"plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
         ]
     }
 }
@@ -70,7 +70,7 @@ project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configur
     kotlinOptions {
         freeCompilerArgs += [
             "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
+            //"plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
         ]
     }
 } 
