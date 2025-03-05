@@ -2,10 +2,10 @@
 buildscript {
     ext {
         buildToolsVersion = "34.0.0"
-        minSdkVersion = 21
+        minSdkVersion = 24
         compileSdkVersion = 34
         targetSdkVersion = 34
-        kotlinVersion = "1.7.20"
+        kotlinVersion = "1.8.10"
 
         // Especificar Java 17
         JavaVersion.VERSION_17
@@ -45,12 +45,7 @@ subprojects {
     configurations.all {
         resolutionStrategy.eachDependency { details ->
             if (details.requested.group == "org.jetbrains.kotlin") {
-                // Si la versión solicitada está vacía o nula, forzamos la versión definida
-                if (!details.requested.version?.trim()) {
-                    details.useVersion rootProject.ext.kotlinVersion
-                } else {
-                    details.useVersion rootProject.ext.kotlinVersion
-                }
+                details.useVersion rootProject.ext.kotlinVersion
             }
         }
     }
@@ -60,7 +55,11 @@ allprojects {
     tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
         kotlinOptions {
             jvmTarget = '17'
-            freeCompilerArgs += ["-Xskip-metadata-version-check"]
+            freeCompilerArgs += [
+                "-Xskip-metadata-version-check",
+                "-P",
+                "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=1.7.20"
+            ]
         }
     }
 }

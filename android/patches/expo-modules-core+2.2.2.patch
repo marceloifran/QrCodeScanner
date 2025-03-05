@@ -1,0 +1,19 @@
+diff --git a/node_modules/expo-modules-core/android/build.gradle b/node_modules/expo-modules-core/android/build.gradle
+index 1234567..abcdef0 100644
+--- a/node_modules/expo-modules-core/android/build.gradle
++++ b/node_modules/expo-modules-core/android/build.gradle
+@@ -1,6 +1,7 @@
+ plugins {
+   id 'com.android.library'
+   id 'kotlin-android'
++  id 'kotlin-parcelize'
+ }
+ 
+ def safeExtGet(prop, fallback) {
+@@ -123,6 +124,7 @@ android {
+   kotlinOptions {
+     jvmTarget = JavaVersion.VERSION_11
+     freeCompilerArgs += "-Xopt-in=kotlin.RequiresOptIn"
++    freeCompilerArgs += ["-P", "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=1.7.20"]
+   }
+ } 

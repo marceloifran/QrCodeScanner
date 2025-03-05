@@ -63,4 +63,14 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.7.20"
     // Eliminar todas las dependencias de Compose
+}
+
+// Este archivo se aplicará a expo-modules-core para solucionar problemas de compatibilidad
+project.tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        freeCompilerArgs += [
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:suppressKotlinVersionCompatibilityCheck=true"
+        ]
+    }
 } 
