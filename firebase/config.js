@@ -38,4 +38,9 @@ try {
 
 const db = getFirestore(app);
 
+// Función para obtener el usuario actual
+export const getCurrentUser = () => {
+  return auth.currentUser;
+};
+
 export { auth, app, db }; 

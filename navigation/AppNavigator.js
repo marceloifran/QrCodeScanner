@@ -13,6 +13,7 @@ import ScanProductScreen from '../screens/ScanProductScreen';
 import SalesHistoryScreen from '../screens/SalesHistoryScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
 
 const Stack = createStackNavigator();
 
@@ -87,7 +88,7 @@ export default function AppNavigator() {
             <Stack.Screen 
               name="ScanProduct" 
               component={ScanProductScreen} 
-              options={{ title: 'Escanear y Vender' }}
+              options={{ title: 'Nueva Venta' }}
             />
             <Stack.Screen 
               name="SalesHistory" 
@@ -98,6 +99,11 @@ export default function AppNavigator() {
               name="Profile" 
               component={ProfileScreen}
               options={{ title: 'Mi Perfil' }}
+            />
+            <Stack.Screen 
+              name="Notifications" 
+              component={NotificationsScreen} 
+              options={{ title: 'Notificaciones' }}
             />
           </>
         )}

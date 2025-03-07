@@ -13,11 +13,12 @@ import {
   Modal
 } from 'react-native';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { auth, db } from '../firebase/config';
 import { Camera, CameraView } from 'expo-camera';
 import { colors } from '../theme/colors';
 import { categories } from '../constants/categories';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function AddProductScreen({ navigation }) {
   const [barcode, setBarcode] = useState('');
@@ -29,6 +30,8 @@ export default function AddProductScreen({ navigation }) {
   const [scanning, setScanning] = useState(false);
   const [hasPermission, setHasPermission] = useState(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [expiryDate, setExpiryDate] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const requestCameraPermission = async () => {
     const { status } = await Camera.requestCameraPermissionsAsync();
@@ -66,8 +69,12 @@ export default function AddProductScreen({ navigation }) {
     
     setLoading(true);
     try {
-      // Verificar si ya existe un producto con el mismo código de barras
-      const q = query(collection(db, 'products'), where('barcode', '==', barcode));
+      // Verificar si ya existe un producto con el mismo código de barras para este usuario
+      const q = query(
+        collection(db, 'products'), 
+        where('barcode', '==', barcode),
+        where('userId', '==', auth.currentUser.uid)
+      );
       const querySnapshot = await getDocs(q);
       
       if (!querySnapshot.empty) {
@@ -76,14 +83,16 @@ export default function AddProductScreen({ navigation }) {
         return;
       }
       
-      // Agregar el nuevo producto
+      // Agregar el nuevo producto con el ID del usuario y fecha de vencimiento
       await addDoc(collection(db, 'products'), {
         barcode,
         name,
         price: parseFloat(price),
         stock: parseInt(stock),
         category,
+        expiryDate: expiryDate ? expiryDate : null,
         createdAt: new Date(),
+        userId: auth.currentUser.uid
       });
       
       Alert.alert(
@@ -134,6 +143,13 @@ export default function AddProductScreen({ navigation }) {
       </View>
     </Modal>
   );
+
+  const onChangeDate = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setExpiryDate(selectedDate);
+    }
+  };
 
   return (
     <KeyboardAvoidingView 
@@ -201,6 +217,21 @@ export default function AddProductScreen({ navigation }) {
           editable={!scanning}
         />
         
+        <TouchableOpacity
+          style={styles.dateSelector}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <View style={styles.dateSelectorContent}>
+            <Ionicons name="calendar" size={24} color={colors.text.secondary} />
+            <Text style={[
+              styles.dateText,
+              !expiryDate && styles.datePlaceholder
+            ]}>
+              {expiryDate ? expiryDate.toLocaleDateString() : 'Fecha de vencimiento (opcional)'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        
         <TouchableOpacity 
           style={[styles.addButton, loading && styles.disabledButton]} 
           onPress={handleAddProduct}
@@ -239,6 +270,16 @@ export default function AddProductScreen({ navigation }) {
             </View>
           </CameraView>
         </View>
+      )}
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={expiryDate || new Date()}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={onChangeDate}
+          minimumDate={new Date()}
+        />
       )}
     </KeyboardAvoidingView>
   );
@@ -399,5 +440,30 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: 16,
     fontWeight: '600',
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    borderRadius: 5,
+    marginBottom: 15,
+    paddingHorizontal: 15,
+    height: 50,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateSelectorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+  },
+  dateText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    marginLeft: 10,
+  },
+  datePlaceholder: {
+    color: colors.text.secondary,
   },
 }); 

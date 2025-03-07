@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, increment, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 
 export default function ScanProductScreen({ navigation }) {
   const [hasPermission, setHasPermission] = useState(null);
@@ -40,45 +40,59 @@ export default function ScanProductScreen({ navigation }) {
     setTotal(sum);
   }, [cart]);
 
-  const handleBarCodeScanned = async ({ type, data }) => {
-    try {
+  const handleBarCodeScanned = async ({ data }) => {
+    if (scanning) {
+      setScanning(false); // Detener el escaneo inmediatamente
+      
       setLoading(true);
-      
-      // Buscar el producto en la base de datos
-      const q = query(collection(db, 'products'), where('barcode', '==', data));
-      const querySnapshot = await getDocs(q);
-      
-      if (querySnapshot.empty) {
-        Alert.alert('Error', 'Producto no encontrado');
+      try {
+        // Buscar el producto en la base de datos
+        const q = query(
+          collection(db, 'products'), 
+          where('barcode', '==', data),
+          where('userId', '==', auth.currentUser.uid)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+          Alert.alert(
+            'Producto no encontrado',
+            '¿Desea agregar este producto?',
+            [
+              {
+                text: 'Cancelar',
+                onPress: () => setScanning(true),
+                style: 'cancel',
+              },
+              {
+                text: 'Agregar',
+                onPress: () => {
+                  navigation.navigate('AddProduct', { barcode: data });
+                },
+              },
+            ],
+            { cancelable: false }
+          );
+        } else {
+          // Producto encontrado, agregarlo al carrito
+          const productData = querySnapshot.docs[0].data();
+          const product = {
+            id: querySnapshot.docs[0].id,
+            ...productData
+          };
+          
+          // Mostrar modal para seleccionar cantidad
+          setSelectedProduct(product);
+          setCurrentQuantity('1');
+          setModalVisible(true);
+        }
+      } catch (error) {
+        console.error('Error al buscar producto:', error);
+        Alert.alert('Error', 'No se pudo buscar el producto');
+        setScanning(true);
+      } finally {
         setLoading(false);
-        return;
       }
-      
-      // Obtener los datos del producto
-      const productDoc = querySnapshot.docs[0];
-      const productData = {
-        id: productDoc.id,
-        ...productDoc.data()
-      };
-      
-      // Verificar si hay stock disponible
-      if (productData.stock <= 0) {
-        Alert.alert('Error', 'No hay stock disponible para este producto');
-        setLoading(false);
-        return;
-      }
-      
-      // Mostrar modal para confirmar cantidad
-      setSelectedProduct(productData);
-      setCurrentQuantity('1');
-      setModalVisible(true);
-      
-    } catch (error) {
-      console.error('Error al escanear producto:', error);
-      Alert.alert('Error', 'Hubo un problema al procesar el código');
-    } finally {
-      setLoading(false);
-      setScanning(false);
     }
   };
 
@@ -157,7 +171,7 @@ export default function ScanProductScreen({ navigation }) {
     
     setLoading(true);
     try {
-      // Crear registro de venta
+      // Crear registro de venta con el ID del usuario
       const sale = {
         items: cart.map(item => ({
           productId: item.id,
@@ -168,7 +182,8 @@ export default function ScanProductScreen({ navigation }) {
           subtotal: item.price * item.quantity
         })),
         total: total,
-        date: Timestamp.now()
+        date: Timestamp.now(),
+        userId: auth.currentUser.uid // Asociar la venta con el usuario
       };
       
       const saleRef = await addDoc(collection(db, 'sales'), sale);

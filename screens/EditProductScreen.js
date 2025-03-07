@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -13,10 +13,11 @@ import {
   Modal
 } from 'react-native';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { categories } from '../constants/categories';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function EditProductScreen({ route, navigation }) {
   const { product } = route.params;
@@ -26,6 +27,15 @@ export default function EditProductScreen({ route, navigation }) {
   const [category, setCategory] = useState(product.category || '');
   const [loading, setLoading] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [expiryDate, setExpiryDate] = useState(product.expiryDate ? new Date(product.expiryDate.seconds * 1000) : null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  useEffect(() => {
+    if (product.userId !== auth.currentUser.uid) {
+      Alert.alert('Error', 'No tienes permiso para editar este producto');
+      navigation.goBack();
+    }
+  }, []);
 
   const validateForm = () => {
     if (!name || !price || !stock || !category) {
@@ -53,6 +63,7 @@ export default function EditProductScreen({ route, navigation }) {
         price: parseFloat(price),
         stock: parseInt(stock),
         category,
+        expiryDate: expiryDate,
         updatedAt: new Date()
       });
       
@@ -142,6 +153,13 @@ export default function EditProductScreen({ route, navigation }) {
     </Modal>
   );
 
+  const onChangeDate = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setExpiryDate(selectedDate);
+    }
+  };
+
   return (
     <KeyboardAvoidingView 
       style={styles.container}
@@ -191,6 +209,29 @@ export default function EditProductScreen({ route, navigation }) {
           onChangeText={setStock}
           keyboardType="numeric"
         />
+        
+        <TouchableOpacity
+          style={styles.dateSelector}
+          onPress={() => setShowDatePicker(true)}
+        >
+          <Text style={[
+            styles.dateText,
+            !expiryDate && styles.datePlaceholder
+          ]}>
+            {expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha de vencimiento (opcional)'}
+          </Text>
+          <Ionicons name="calendar" size={24} color={colors.text.secondary} />
+        </TouchableOpacity>
+        
+        {showDatePicker && (
+          <DateTimePicker
+            value={expiryDate || new Date()}
+            mode="date"
+            display="default"
+            onChange={onChangeDate}
+            minimumDate={new Date()}
+          />
+        )}
         
         <View style={styles.buttonContainer}>
           <TouchableOpacity 
@@ -360,5 +401,24 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: 16,
     fontWeight: '600',
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+    borderRadius: 5,
+    marginBottom: 15,
+    paddingHorizontal: 15,
+    height: 50,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateText: {
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  datePlaceholder: {
+    color: colors.text.secondary,
   },
 }); 

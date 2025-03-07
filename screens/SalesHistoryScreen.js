@@ -9,7 +9,7 @@ import {
   ActivityIndicator 
 } from 'react-native';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -52,7 +52,10 @@ export default function SalesHistoryScreen() {
           );
           break;
         default:
-          q = query(collection(db, 'sales'), orderBy('date', 'desc'));
+          q = query(
+            collection(db, 'sales'),
+            where('userId', '==', auth.currentUser.uid)
+          );
       }
 
       const querySnapshot = await getDocs(q);

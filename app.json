@@ -10,7 +10,15 @@
           "cameraPermission": "Permitir que $(PRODUCT_NAME) acceda a tu cámara."
         }
       ],
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "sounds": ["./assets/notification-sound.wav"]
+        }
+      ]
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -26,7 +34,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tuempresa.kioskoapp",
-      "buildNumber": "1.0.0"
+      "buildNumber": "1.0.0",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,8 +44,10 @@
       },
       "package": "com.marceloifran.kioskoapp",
       "permissions": [
-        "CAMERA"
-      ]
+        "CAMERA",
+        "NOTIFICATIONS"
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
