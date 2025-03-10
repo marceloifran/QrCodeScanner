@@ -50,33 +50,19 @@ export default function NewCartScreen({ navigation, route }) {
     setCartItems(cartItems.filter(item => item.id !== productId));
   };
   
-  const updateQuantity = (productId, newQuantity) => {
-    if (newQuantity <= 0) {
-      removeFromCart(productId);
-      return;
-    }
+  const updateQuantity = (index, newQuantity) => {
+    if (newQuantity < 1) return;
     
-    const product = cartItems.find(item => item.id === productId);
-    if (newQuantity > product.stock) {
-      Alert.alert('Stock insuficiente', `Solo hay ${product.stock} unidades disponibles.`);
-      return;
-    }
-    
-    const updatedItems = cartItems.map(item => 
-      item.id === productId ? { ...item, quantity: newQuantity } : item
-    );
+    const updatedItems = [...cartItems];
+    updatedItems[index].quantity = newQuantity;
+    updatedItems[index].subtotal = updatedItems[index].price * newQuantity;
     setCartItems(updatedItems);
   };
   
-  const handleQuantityChange = (productId, text) => {
-    const newQuantity = parseInt(text);
-    if (!isNaN(newQuantity)) {
-      updateQuantity(productId, newQuantity);
-    }
-  };
-  
-  const getSubtotal = () => {
-    return cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const removeItem = (index) => {
+    const updatedItems = [...cartItems];
+    updatedItems.splice(index, 1);
+    setCartItems(updatedItems);
   };
   
   const handleCheckout = async () => {
@@ -87,26 +73,66 @@ export default function NewCartScreen({ navigation, route }) {
     
     setLoading(true);
     try {
+      // Verificar stock antes de procesar
+      for (const item of cartItems) {
+        // Obtener el stock actual del producto
+        const productRef = doc(db, 'products', item.id);
+        const productSnap = await getDoc(productRef);
+        
+        if (!productSnap.exists()) {
+          Alert.alert('Error', `El producto ${item.name} ya no existe.`);
+          setLoading(false);
+          return;
+        }
+        
+        const currentStock = productSnap.data().stock;
+        
+        if (currentStock < item.quantity) {
+          Alert.alert('Error', `Stock insuficiente para ${item.name}. Solo quedan ${currentStock} unidades.`);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Crear la venta con estructura correcta
+      const total = calculateTotal();
       const saleData = {
         userId: auth.currentUser.uid,
         date: serverTimestamp(),
         items: cartItems.map(item => ({
           id: item.id,
           name: item.name,
-          price: item.price,
-          quantity: item.quantity
+          price: parseFloat(item.price),
+          quantity: parseInt(item.quantity)
         })),
-        total: getSubtotal()
+        total: parseFloat(total)
       };
       
-      await addDoc(collection(db, 'sales'), saleData);
+      console.log('Datos de venta a guardar:', saleData);
       
-      for (const item of cartItems) {
+      // Guardar la venta
+      const saleRef = await addDoc(collection(db, 'sales'), saleData);
+      console.log('Venta guardada con ID:', saleRef.id);
+      
+      // Actualizar el stock de cada producto
+      const updatePromises = cartItems.map(async (item) => {
         const productRef = doc(db, 'products', item.id);
-        await updateDoc(productRef, {
-          stock: item.stock - item.quantity
-        });
-      }
+        const productSnap = await getDoc(productRef);
+        
+        if (productSnap.exists()) {
+          const currentStock = productSnap.data().stock;
+          const newStock = Math.max(0, currentStock - item.quantity);
+          
+          console.log(`Actualizando stock de ${item.name}: ${currentStock} -> ${newStock}`);
+          
+          return updateDoc(productRef, {
+            stock: newStock,
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+      
+      await Promise.all(updatePromises);
       
       setCartItems([]);
       Alert.alert(
@@ -116,111 +142,107 @@ export default function NewCartScreen({ navigation, route }) {
       );
     } catch (error) {
       console.error('Error al procesar la venta:', error);
-      Alert.alert('Error', 'No se pudo completar la venta. Inténtalo de nuevo.');
+      Alert.alert('Error', 'No se pudo completar la venta: ' + error.message);
     } finally {
       setLoading(false);
     }
   };
   
-  const renderItem = ({ item }) => (
-    <View style={styles.cartItem}>
-      <View style={styles.itemContent}>
-        <Text style={styles.itemName}>{item.name}</Text>
-        <Text style={styles.itemPrice}>${formatPrice(item.price)} x {item.quantity} = ${formatPrice(item.price * item.quantity)}</Text>
+  const calculateTotal = () => {
+    return cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  };
+  
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
-      
-      <View style={styles.itemActions}>
-        <TouchableOpacity 
-          style={styles.minusButton}
-          onPress={() => updateQuantity(item.id, item.quantity - 1)}
-        >
-          <Text style={styles.buttonText}>-</Text>
-        </TouchableOpacity>
-        
-        <TextInput
-          style={styles.quantityInput}
-          value={item.quantity.toString()}
-          onChangeText={(text) => handleQuantityChange(item.id, text)}
-          keyboardType="numeric"
-        />
-        
-        <TouchableOpacity 
-          style={styles.plusButton}
-          onPress={() => updateQuantity(item.id, item.quantity + 1)}
-        >
-          <Text style={styles.buttonText}>+</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.deleteButton}
-          onPress={() => removeFromCart(item.id)}
-        >
-          <Text style={styles.deleteButtonText}>X</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  }
   
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       
+      {/* Header con botón de retroceso y título */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Nueva Venta</Text>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Mi Carrito</Text>
+        <TouchableOpacity style={styles.refreshButton}>
+          <Ionicons name="refresh" size={24} color="#000" />
+        </TouchableOpacity>
       </View>
       
-      <View style={styles.subHeader}>
-        <Text style={styles.subHeaderTitle}>Carrito de Compras</Text>
-      </View>
-      
-      {loading ? (
-        <ActivityIndicator size="large" color="#28a745" style={styles.loader} />
-      ) : (
-        <>
-          {cartItems.length > 0 ? (
-            <FlatList
-              data={cartItems}
-              renderItem={renderItem}
-              keyExtractor={item => item.id}
-              contentContainerStyle={styles.cartList}
-            />
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No hay productos en la venta</Text>
+      {/* Lista de productos */}
+      <FlatList
+        data={cartItems}
+        keyExtractor={(item, index) => index.toString()}
+        renderItem={({ item, index }) => (
+          <View style={styles.cartItem}>
+            <View style={styles.itemDetails}>
+              <Text style={styles.itemName}>{item.name} x{item.quantity}</Text>
+              <Text style={styles.itemPrice}>$$ {formatPrice(item.price * item.quantity)}</Text>
+            </View>
+            
+            <View style={styles.itemActions}>
               <TouchableOpacity 
-                style={styles.addProductsButton}
-                onPress={() => navigation.navigate('ProductList', { isSelecting: true })}
+                style={styles.quantityButton}
+                onPress={() => updateQuantity(index, item.quantity - 1)}
               >
-                <Text style={styles.addProductsButtonText}>Agregar Productos</Text>
+                <Ionicons name="remove" size={24} color="white" />
+              </TouchableOpacity>
+              
+              <Text style={styles.quantityText}>{item.quantity}</Text>
+              
+              <TouchableOpacity 
+                style={styles.quantityButton}
+                onPress={() => updateQuantity(index, item.quantity + 1)}
+              >
+                <Ionicons name="add" size={24} color="white" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.deleteButton}
+                onPress={() => removeItem(index)}
+              >
+                <Ionicons name="trash-outline" size={24} color="#777" />
               </TouchableOpacity>
             </View>
-          )}
+          </View>
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>El carrito está vacío</Text>
+            <TouchableOpacity 
+              style={styles.addProductsButton}
+              onPress={() => navigation.navigate('ProductList', { isSelecting: true })}
+            >
+              <Text style={styles.addProductsButtonText}>Agregar Productos</Text>
+            </TouchableOpacity>
+          </View>
+        }
+      />
+      
+      {/* Footer con subtotal y botón de finalizar */}
+      {cartItems.length > 0 && (
+        <View style={styles.footer}>
+          <View style={styles.subtotalContainer}>
+            <Text style={styles.subtotalLabel}>Subtotal</Text>
+            <Text style={styles.subtotalValue}>$$ {formatPrice(calculateTotal())}</Text>
+          </View>
           
-          {cartItems.length > 0 && (
-            <>
-              <View style={styles.totalContainer}>
-                <Text style={styles.totalText}>Total: ${formatPrice(getSubtotal())}</Text>
-              </View>
-              
-              <View style={styles.buttonsContainer}>
-                <TouchableOpacity 
-                  style={styles.scanMoreButton}
-                  onPress={() => navigation.navigate('ScanProduct')}
-                >
-                  <Text style={styles.scanMoreButtonText}>Escanear Más</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={styles.checkoutButton}
-                  onPress={handleCheckout}
-                  disabled={loading}
-                >
-                  <Text style={styles.checkoutButtonText}>Finalizar</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </>
+          <TouchableOpacity 
+            style={styles.checkoutButton}
+            onPress={handleCheckout}
+          >
+            <Text style={styles.checkoutButtonText}>Finalizar Venta</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -232,138 +254,120 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    backgroundColor: '#28a745',
-    paddingTop: 40,
-    paddingBottom: 15,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingVertical: 15,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  backButton: {
+    padding: 5,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  subHeader: {
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    backgroundColor: '#f5f5f5',
-  },
-  subHeaderTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
   },
-  loader: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cartList: {
-    padding: 10,
+  refreshButton: {
+    padding: 5,
   },
   cartItem: {
     backgroundColor: 'white',
     borderRadius: 10,
     padding: 15,
-    marginBottom: 10,
+    margin: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  itemContent: {
+  itemDetails: {
     marginBottom: 10,
   },
   itemName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#333',
-    marginBottom: 5,
   },
   itemPrice: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginTop: 5,
   },
   itemActions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
-  minusButton: {
-    backgroundColor: '#6c757d',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  quantityButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  plusButton: {
-    backgroundColor: '#28a745',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  quantityInput: {
-    width: 50,
-    height: 40,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 5,
-    textAlign: 'center',
+  quantityText: {
     fontSize: 18,
-    marginHorizontal: 10,
+    fontWeight: 'bold',
+    marginHorizontal: 15,
   },
   deleteButton: {
-    backgroundColor: '#dc3545',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    marginLeft: 15,
+    padding: 5,
+  },
+  emptyContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 10,
+    padding: 50,
   },
-  deleteButtonText: {
+  emptyText: {
+    fontSize: 16,
+    color: '#777',
+    marginBottom: 20,
+  },
+  addProductsButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
+  },
+  addProductsButtonText: {
     color: 'white',
-    fontSize: 18,
     fontWeight: 'bold',
   },
-  totalContainer: {
+  footer: {
     backgroundColor: 'white',
-    padding: 15,
-    margin: 10,
-    borderRadius: 10,
-    alignItems: 'flex-end',
+    paddingHorizontal: 15,
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
-  totalText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  buttonsContainer: {
+  subtotalContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 10,
-  },
-  scanMoreButton: {
-    backgroundColor: '#6c757d',
-    flex: 1,
-    padding: 15,
-    borderRadius: 5,
-    marginRight: 10,
     alignItems: 'center',
+    marginBottom: 15,
   },
-  scanMoreButtonText: {
-    color: 'white',
-    fontSize: 16,
+  subtotalLabel: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#333',
+  },
+  subtotalValue: {
+    fontSize: 20,
     fontWeight: 'bold',
+    color: colors.primary,
   },
   checkoutButton: {
-    backgroundColor: '#28a745',
-    flex: 1,
-    padding: 15,
+    backgroundColor: colors.primary,
+    paddingVertical: 15,
     borderRadius: 5,
     alignItems: 'center',
   },
@@ -371,27 +375,5 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    fontSize: 18,
-    color: '#999',
-    marginBottom: 20,
-  },
-  addProductsButton: {
-    backgroundColor: '#28a745',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  addProductsButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

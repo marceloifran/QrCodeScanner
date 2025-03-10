@@ -1,124 +1,63 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  Image, 
-  ActivityIndicator,
-  Alert,
-  ScrollView
-} from 'react-native';
-import { signOut } from 'firebase/auth';
-import { auth, db } from '../firebase/config';
-import { doc, getDoc } from 'firebase/firestore';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 
 export default function ProfileScreen({ navigation }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [businessInfo, setBusinessInfo] = useState(null);
-
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
-  const loadUserData = async () => {
-    setLoading(true);
-    try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        setUser(currentUser);
-        
-        // Cargar información del negocio
-        const businessInfoRef = doc(db, 'businessInfo', currentUser.uid);
-        const businessInfoDoc = await getDoc(businessInfoRef);
-        
-        if (businessInfoDoc.exists()) {
-          setBusinessInfo(businessInfoDoc.data());
-        }
-      }
-    } catch (error) {
-      console.error('Error al cargar datos del usuario:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
+  const handleSignOut = async () => {
     try {
       await signOut(auth);
+      // La redirección a la pantalla de login se maneja automáticamente por el AuthContext
     } catch (error) {
-      console.error('Error al cerrar sesión:', error);
-      Alert.alert('Error', 'No se pudo cerrar sesión');
+      Alert.alert('Error', 'No se pudo cerrar sesión. Inténtalo de nuevo.');
     }
   };
 
   return (
     <View style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-      ) : (
-        <ScrollView>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarContainer}>
-              {user?.photoURL ? (
-                <Image source={{ uri: user.photoURL }} style={styles.avatar} />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>
-                    {businessInfo?.name ? businessInfo.name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || '?'}
-                  </Text>
-                </View>
-              )}
-            </View>
-            
-            <Text style={styles.businessName}>
-              {businessInfo?.name || 'Mi Negocio'}
-            </Text>
-            
-            <Text style={styles.email}>{user?.email}</Text>
+      <View style={styles.content}>
+        <View style={styles.userInfoContainer}>
+          <View style={styles.userAvatar}>
+            <Ionicons name="person" size={40} color={colors.primary} />
           </View>
-          
-          <View style={styles.optionsContainer}>
-            <TouchableOpacity 
-              style={styles.optionItem}
-              onPress={() => navigation.navigate('NotificationSettings')}
-            >
-              <Ionicons name="notifications-outline" size={24} color={colors.primary} />
-              <Text style={styles.optionText}>Configurar Notificaciones</Text>
-              <Ionicons name="chevron-forward" size={24} color="#ccc" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.optionItem}
-              onPress={() => navigation.navigate('BusinessInfo')}
-            >
-              <Ionicons name="business-outline" size={24} color={colors.primary} />
-              <Text style={styles.optionText}>Información del Negocio</Text>
-              <Ionicons name="chevron-forward" size={24} color="#ccc" />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.optionItem}
-              onPress={() => navigation.navigate('Settings')}
-            >
-              <Ionicons name="settings-outline" size={24} color={colors.primary} />
-              <Text style={styles.optionText}>Configuración</Text>
-              <Ionicons name="chevron-forward" size={24} color="#ccc" />
-            </TouchableOpacity>
+          <View style={styles.userDetails}>
+            <Text style={styles.userName}>{auth.currentUser?.displayName || 'Usuario'}</Text>
+            <Text style={styles.userEmail}>{auth.currentUser?.email}</Text>
           </View>
-          
-          <TouchableOpacity 
-            style={styles.logoutButton}
-            onPress={handleLogout}
+        </View>
+        
+        <View style={styles.optionsContainer}>
+          {/* Sección de Configuración de Notificaciones */}
+          <TouchableOpacity
+            style={styles.optionItem}
+            onPress={() => navigation.navigate('NotificationSettings')}
           >
-            <Ionicons name="log-out-outline" size={24} color="white" />
-            <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
+            <View style={styles.optionIconContainer}>
+              <Ionicons name="notifications-outline" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Configuración de Notificaciones</Text>
+              <Text style={styles.optionDescription}>Gestiona tus preferencias de notificaciones</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
           </TouchableOpacity>
-        </ScrollView>
-      )}
+          
+          {/* Sección de Cerrar Sesión */}
+          <TouchableOpacity
+            style={[styles.optionItem, styles.signOutOption]}
+            onPress={handleSignOut}
+          >
+            <View style={[styles.optionIconContainer, styles.signOutIconContainer]}>
+              <Ionicons name="log-out-outline" size={24} color="#e53935" />
+            </View>
+            <View style={styles.optionTextContainer}>
+              <Text style={[styles.optionTitle, styles.signOutText]}>Cerrar Sesión</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
     </View>
   );
 }
@@ -126,57 +65,57 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: colors.background,
+    paddingTop: 50,
   },
-  loader: {
+  content: {
     flex: 1,
+    padding: 20,
+  },
+  userInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+  },
+  userAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#e8f5e9',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: 15,
   },
-  profileHeader: {
-    alignItems: 'center',
-    padding: 30,
-    backgroundColor: colors.primary,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
+  userDetails: {
+    flex: 1,
   },
-  avatarContainer: {
-    marginBottom: 15,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'white',
-  },
-  avatarText: {
-    fontSize: 40,
-    color: 'white',
+  userName: {
+    fontSize: 18,
     fontWeight: 'bold',
-  },
-  businessName: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    color: colors.text.primary,
     marginBottom: 5,
-    color: 'white',
   },
-  email: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.8)',
+  userEmail: {
+    fontSize: 14,
+    color: colors.text.secondary,
   },
   optionsContainer: {
-    marginTop: 20,
+    backgroundColor: 'white',
+    borderRadius: 10,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
   },
   optionItem: {
     flexDirection: 'row',
@@ -185,25 +124,35 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  optionText: {
-    flex: 1,
-    marginLeft: 15,
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  logoutButton: {
-    backgroundColor: colors.error,
-    flexDirection: 'row',
-    alignItems: 'center',
+  optionIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e8f5e9',
     justifyContent: 'center',
-    padding: 15,
-    margin: 20,
-    borderRadius: 10,
+    alignItems: 'center',
+    marginRight: 15,
   },
-  logoutButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+  optionTextContainer: {
+    flex: 1,
+  },
+  optionTitle: {
     fontSize: 16,
-    marginLeft: 10,
+    fontWeight: '500',
+    color: colors.text.primary,
+    marginBottom: 3,
+  },
+  optionDescription: {
+    fontSize: 14,
+    color: colors.text.secondary,
+  },
+  signOutOption: {
+    borderBottomWidth: 0,
+  },
+  signOutIconContainer: {
+    backgroundColor: '#ffebee',
+  },
+  signOutText: {
+    color: '#e53935',
   },
 }); 

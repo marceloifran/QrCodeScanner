@@ -135,12 +135,7 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
         </View>
         
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>¿No tienes una cuenta?</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
-            <Text style={styles.signUpText}>Regístrate</Text>
-          </TouchableOpacity>
-        </View>
+     
       </ScrollView>
     </KeyboardAvoidingView>
   );

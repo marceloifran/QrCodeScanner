@@ -9,9 +9,10 @@ import {
   ActivityIndicator,
   ScrollView,
   Keyboard,
-  Alert
+  Alert,
+  Modal
 } from 'react-native';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, doc, deleteDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { predefinedCategories } from '../constants/categories';
@@ -26,6 +27,8 @@ export default function ProductListScreen({ navigation, route }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const [categoryCounts, setCategoryCounts] = useState({});
+  const [showOptionsModal, setShowOptionsModal] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   
   // Verificar si estamos en modo selección (para ventas)
   const isSelecting = route.params?.isSelecting || false;
@@ -129,6 +132,52 @@ export default function ProductListScreen({ navigation, route }) {
     return colors.success; // Verde para stock normal
   };
 
+  const handleProductPress = (product) => {
+    setSelectedProduct(product);
+    setShowOptionsModal(true);
+  };
+
+  const handleEditProduct = () => {
+    setShowOptionsModal(false);
+    navigation.navigate('EditProduct', { productId: selectedProduct.id });
+  };
+
+  const handleDeleteProduct = () => {
+    Alert.alert(
+      'Confirmar eliminación',
+      `¿Estás seguro de que deseas eliminar "${selectedProduct.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Eliminar', 
+          style: 'destructive',
+          onPress: async () => {
+            setShowOptionsModal(false);
+            setLoading(true);
+            try {
+              await deleteDoc(doc(db, 'products', selectedProduct.id));
+              
+              // Actualizar la lista de productos
+              const updatedProducts = products.filter(p => p.id !== selectedProduct.id);
+              setProducts(updatedProducts);
+              
+              // Actualizar los productos filtrados
+              const updatedFiltered = filteredProducts.filter(p => p.id !== selectedProduct.id);
+              setFilteredProducts(updatedFiltered);
+              
+              Alert.alert('Éxito', 'Producto eliminado correctamente');
+            } catch (error) {
+              console.error('Error al eliminar producto:', error);
+              Alert.alert('Error', 'No se pudo eliminar el producto');
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const renderCategoryFilter = () => (
     <View style={styles.filtersContainer}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -216,48 +265,40 @@ export default function ProductListScreen({ navigation, route }) {
     </View>
   );
 
-  const renderItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.productCard}
-      onPress={() => {
-        // Cerrar el teclado y navegar en una sola acción
-        Keyboard.dismiss();
+  const renderItem = ({ item }) => {
+    const stockColor = getStockColor(item.stock);
+    
+    return (
+      <TouchableOpacity 
+        style={styles.productCard}
+        onPress={() => handleProductPress(item)}
+      >
+        <View style={styles.productInfo}>
+          <Text style={styles.productName}>{item.name}</Text>
+          {item.barcode && <Text style={styles.productBarcode}>{item.barcode}</Text>}
+          <Text style={styles.productCategory}>{item.category || 'Sin categoría'}</Text>
+          <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
+          <Text style={[styles.productStock, { color: stockColor }]}>
+            Stock: {item.stock} {item.stock <= 5 ? '(Bajo)' : ''}
+          </Text>
+        </View>
         
-        if (isSelecting) {
-          // Si estamos seleccionando para una venta
-          navigation.navigate('Cart', { selectedProduct: item });
-        } else {
-          // Si estamos en modo normal (edición)
-          navigation.navigate('EditProduct', { productId: item.id });
-        }
-      }}
-    >
-      <View style={styles.productInfo}>
-        <Text style={styles.productName}>{item.name}</Text>
-        {item.barcode && (
-          <Text style={styles.productBarcode}>{item.barcode}</Text>
+        {isSelecting && (
+          <TouchableOpacity
+            style={styles.addToCartButton}
+            onPress={() => {
+              if (route.params?.onSelectProduct) {
+                route.params.onSelectProduct(item);
+                navigation.goBack();
+              }
+            }}
+          >
+            <Ionicons name="add-circle" size={30} color={colors.primary} />
+          </TouchableOpacity>
         )}
-        <Text style={styles.productCategory}>
-          {predefinedCategories.find(cat => cat.id === item.category)?.name || 'Sin categoría'}
-        </Text>
-        <Text style={styles.productPrice}>${formatPrice(item.price)}</Text>
-        <Text style={[styles.productStock, { color: getStockColor(item.stock) }]}>
-          Stock: {item.stock} {item.stock <= 5 ? '(Bajo)' : ''}
-        </Text>
-      </View>
-      
-      {isSelecting && (
-        <TouchableOpacity 
-          style={styles.addToCartButton}
-          onPress={() => {
-            navigation.navigate('Cart', { selectedProduct: item });
-          }}
-        >
-          <Ionicons name="add-circle" size={30} color={colors.primary} />
-        </TouchableOpacity>
-      )}
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -327,6 +368,49 @@ export default function ProductListScreen({ navigation, route }) {
       >
         <Ionicons name="add" size={30} color="white" />
       </TouchableOpacity>
+      
+      {/* Modal de opciones para el producto */}
+      <Modal
+        visible={showOptionsModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowOptionsModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowOptionsModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {selectedProduct?.name}
+            </Text>
+            
+            <TouchableOpacity 
+              style={styles.modalOption}
+              onPress={handleEditProduct}
+            >
+              <Ionicons name="create-outline" size={24} color={colors.primary} />
+              <Text style={styles.modalOptionText}>Editar producto</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.modalOption}
+              onPress={handleDeleteProduct}
+            >
+              <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+              <Text style={[styles.modalOptionText, { color: '#FF3B30' }]}>Eliminar producto</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.closeButton}
+              onPress={() => setShowOptionsModal(false)}
+            >
+              <Text style={styles.closeButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -492,5 +576,53 @@ const styles = StyleSheet.create({
   },
   addToCartButton: {
     padding: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '80%',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: '#333',
+    marginLeft: 15,
+  },
+  closeButton: {
+    marginTop: 20,
+    paddingVertical: 12,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
   },
 }); 

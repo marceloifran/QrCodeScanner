@@ -10,7 +10,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Modal
+  Modal,
+  FlatList
 } from 'react-native';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
@@ -20,9 +21,14 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function EditProductScreen({ navigation, route }) {
+  const { productId } = route.params;
+  
   const [product, setProduct] = useState(null);
   const [name, setName] = useState('');
+  const [barcode, setBarcode] = useState('');
   const [price, setPrice] = useState('');
+  const [basePrice, setBasePrice] = useState('');
+  const [selectedPercentage, setSelectedPercentage] = useState('');
   const [stock, setStock] = useState('');
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(true);
@@ -31,6 +37,8 @@ export default function EditProductScreen({ navigation, route }) {
   const [expiryDate, setExpiryDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  const commonPercentages = ['10', '15', '20', '25', '30', '35', '40', '50'];
+
   useEffect(() => {
     loadProduct();
   }, []);
@@ -38,14 +46,6 @@ export default function EditProductScreen({ navigation, route }) {
   const loadProduct = async () => {
     setLoading(true);
     try {
-      const productId = route.params?.productId;
-      
-      if (!productId) {
-        Alert.alert('Error', 'No se especificó un producto para editar');
-        navigation.goBack();
-        return;
-      }
-      
       const productDoc = await getDoc(doc(db, 'products', productId));
       
       if (!productDoc.exists()) {
@@ -61,8 +61,10 @@ export default function EditProductScreen({ navigation, route }) {
       
       setProduct(productData);
       setName(productData.name);
-      setPrice(productData.price.toString());
-      setStock(productData.stock.toString());
+      setBarcode(productData.barcode || '');
+      setPrice(productData.price ? productData.price.toString() : '');
+      setBasePrice(productData.price ? productData.price.toString() : '');
+      setStock(productData.stock ? productData.stock.toString() : '');
       setCategory(productData.category);
       setExpiryDate(productData.expiryDate ? new Date(productData.expiryDate.seconds * 1000) : null);
     } catch (error) {
@@ -104,6 +106,7 @@ export default function EditProductScreen({ navigation, route }) {
     try {
       await updateDoc(doc(db, 'products', product.id), {
         name,
+        barcode,
         price: parseFloat(price),
         stock: parseInt(stock),
         category,
@@ -159,33 +162,35 @@ export default function EditProductScreen({ navigation, route }) {
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Seleccionar Categoría</Text>
-          <ScrollView>
-            {categories.map((cat) => (
+          <FlatList
+            data={categories}
+            renderItem={({ item }) => (
               <TouchableOpacity
-                key={cat.id}
+                key={item.id}
                 style={[
                   styles.categoryItem,
-                  category === cat.id && styles.categoryItemSelected
+                  category === item.id && styles.categoryItemSelected
                 ]}
                 onPress={() => {
-                  setCategory(cat.id);
+                  setCategory(item.id);
                   setShowCategoryModal(false);
                 }}
               >
                 <Ionicons 
-                  name={cat.icon} 
+                  name={item.icon} 
                   size={24} 
-                  color={category === cat.id ? colors.primary : colors.text.secondary} 
+                  color={category === item.id ? colors.primary : colors.text.secondary} 
                 />
                 <Text style={[
                   styles.categoryItemText,
-                  category === cat.id && styles.categoryItemTextSelected
+                  category === item.id && styles.categoryItemTextSelected
                 ]}>
-                  {cat.name}
+                  {item.name}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            )}
+            keyExtractor={item => item.id}
+          />
           <TouchableOpacity
             style={styles.modalCloseButton}
             onPress={() => setShowCategoryModal(false)}
@@ -204,6 +209,48 @@ export default function EditProductScreen({ navigation, route }) {
     }
   };
 
+  const applyPercentage = (percentage) => {
+    if (!price) return;
+    
+    if (selectedPercentage === percentage) {
+      resetPrice();
+      return;
+    }
+    
+    const baseValue = parseFloat(basePrice || price);
+    if (isNaN(baseValue)) return;
+    
+    const percentValue = parseFloat(percentage);
+    if (isNaN(percentValue)) return;
+    
+    const newPrice = baseValue * (1 + percentValue / 100);
+    
+    setPrice(Math.round(newPrice).toString());
+    setSelectedPercentage(percentage);
+  };
+
+  const resetPrice = () => {
+    if (basePrice) {
+      setPrice(basePrice);
+      setSelectedPercentage('');
+    }
+  };
+
+  const handlePriceChange = (text) => {
+    setPrice(text);
+    if (!selectedPercentage) {
+      setBasePrice(text);
+    }
+  };
+
+  if (loading && !name) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -211,7 +258,7 @@ export default function EditProductScreen({ navigation, route }) {
           <Text style={styles.label}>Código de barras</Text>
           <TextInput
             style={styles.input}
-            value={product?.barcode}
+            value={barcode}
             editable={false}
           />
           
@@ -222,6 +269,7 @@ export default function EditProductScreen({ navigation, route }) {
             onChangeText={setName}
           />
 
+          <Text style={styles.label}>Categoría</Text>
           <TouchableOpacity
             style={styles.categorySelector}
             onPress={() => setShowCategoryModal(true)}
@@ -238,14 +286,51 @@ export default function EditProductScreen({ navigation, route }) {
             <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
           </TouchableOpacity>
           
+          <Text style={styles.label}>Precio</Text>
           <TextInput
             style={styles.input}
             placeholder="Precio"
             value={price}
-            onChangeText={setPrice}
+            onChangeText={handlePriceChange}
             keyboardType="decimal-pad"
           />
           
+          {price ? (
+            <>
+              <View style={styles.percentageHeader}>
+                <Text style={styles.sublabel}>Aplicar porcentaje de ganancia:</Text>
+                {selectedPercentage ? (
+                  <TouchableOpacity style={styles.resetButton} onPress={resetPrice}>
+                    <Text style={styles.resetButtonText}>Quitar</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              
+              <View style={styles.percentageButtonsContainer}>
+                {commonPercentages.map(percent => (
+                  <TouchableOpacity
+                    key={percent}
+                    style={[
+                      styles.percentageButton,
+                      selectedPercentage === percent && styles.selectedPercentageButton
+                    ]}
+                    onPress={() => applyPercentage(percent)}
+                  >
+                    <Text
+                      style={[
+                        styles.percentageButtonText,
+                        selectedPercentage === percent && styles.selectedPercentageButtonText
+                      ]}
+                    >
+                      {percent}%
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          ) : null}
+          
+          <Text style={styles.label}>Stock</Text>
           <TextInput
             style={styles.input}
             placeholder="Stock"
@@ -254,6 +339,7 @@ export default function EditProductScreen({ navigation, route }) {
             keyboardType="numeric"
           />
           
+          <Text style={styles.label}>Fecha de vencimiento (opcional)</Text>
           <TouchableOpacity
             style={styles.dateSelector}
             onPress={() => setShowDatePicker(true)}
@@ -264,7 +350,7 @@ export default function EditProductScreen({ navigation, route }) {
             ]}>
               {expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha de vencimiento (opcional)'}
             </Text>
-            <Ionicons name="calendar" size={24} color={colors.text.secondary} />
+            <Ionicons name="calendar-outline" size={24} color={colors.text.secondary} />
           </TouchableOpacity>
           
           {showDatePicker && (
@@ -278,35 +364,19 @@ export default function EditProductScreen({ navigation, route }) {
           )}
           
           <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={[styles.updateButton, saving && styles.disabledButton]} 
+            <TouchableOpacity
+              style={[styles.button, styles.saveButton, { flex: 1 }, loading && { opacity: 0.7 }]}
               onPress={handleUpdateProduct}
-              disabled={saving}
+              disabled={loading}
             >
-              {saving ? (
-                <ActivityIndicator color="#fff" />
+              {loading ? (
+                <ActivityIndicator color="white" size="small" />
               ) : (
-                <Text style={styles.buttonText}>Actualizar</Text>
+                <Text style={styles.buttonText}>Guardar Cambios</Text>
               )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.deleteButton, saving && styles.disabledButton]} 
-              onPress={handleDeleteProduct}
-              disabled={saving}
-            >
-              <Text style={styles.buttonText}>Eliminar</Text>
             </TouchableOpacity>
           </View>
         </View>
-        
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color={colors.text.primary} />
-          <Text style={styles.backButtonText}>Volver</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       <CategoryModal />
@@ -329,6 +399,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text.secondary,
     marginBottom: 5,
+  },
+  sublabel: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginTop: 5,
   },
   input: {
     width: '100%',
@@ -365,7 +440,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 20,
   },
-  updateButton: {
+  button: {
     flex: 1,
     height: 50,
     backgroundColor: colors.primary,
@@ -374,10 +449,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 10,
   },
-  deleteButton: {
+  saveButton: {
     flex: 1,
     height: 50,
-    backgroundColor: colors.error,
+    backgroundColor: colors.primary,
     borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
@@ -460,18 +535,44 @@ const styles = StyleSheet.create({
   datePlaceholder: {
     color: colors.text.secondary,
   },
-  backButton: {
+  percentageHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
-    backgroundColor: colors.background,
-    borderRadius: 5,
-    marginTop: 20,
+    marginBottom: 10,
   },
-  backButtonText: {
-    color: colors.text.primary,
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 10,
+  resetButton: {
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+  },
+  resetButtonText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  percentageButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 15,
+  },
+  percentageButton: {
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  selectedPercentageButton: {
+    backgroundColor: colors.primary,
+  },
+  percentageButtonText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  selectedPercentageButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
 }); 

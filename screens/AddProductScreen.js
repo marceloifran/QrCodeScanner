@@ -13,59 +13,82 @@ import {
   Modal,
   FlatList
 } from 'react-native';
-import { collection, addDoc, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { db, auth } from '../firebase/config';
 import { Camera, CameraView } from 'expo-camera';
 import { colors } from '../theme/colors';
-import { categories, loadCustomCategories, predefinedCategories } from '../constants/categories';
+import { categories } from '../constants/categories';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-export default function AddProductScreen({ navigation, route }) {
+export default function AddProductScreen({ navigation }) {
   const [barcode, setBarcode] = useState('');
   const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
+  const [price, setPrice] = useState('');         // Precio mostrado (posible modificado con ganancia)
+  const [basePrice, setBasePrice] = useState('');   // Precio original ingresado
+  const [selectedPercentage, setSelectedPercentage] = useState('');
   const [stock, setStock] = useState('');
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [hasPermission, setHasPermission] = useState(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [expiryDate, setExpiryDate] = useState(null);
+  const [expiryDate, setExpiryDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
-  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState(false);
 
-  useEffect(() => {
-    // Si se recibió un código de barras como parámetro, establecerlo en el estado
-    if (route.params?.barcode) {
-      setBarcode(route.params.barcode);
-      console.log("Código de barras recibido:", route.params.barcode);
-    }
-  }, [route.params?.barcode]);
+  const commonPercentages = ['10', '15', '20', '25', '30', '35', '40', '50'];
 
+  // Solicitar permisos al montar el componente
   useEffect(() => {
-    const loadCategories = async () => {
-      await loadCustomCategories();
-      // Forzar actualización del estado para reflejar las nuevas categorías
-      setForceUpdate(prev => !prev);
-    };
-    
-    loadCategories();
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+    })();
   }, []);
 
-  const requestCameraPermission = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === 'granted');
-    if (status === 'granted') {
-      setScanning(true);
-    } else {
-      Alert.alert('Error', 'Se requiere permiso de cámara para escanear códigos');
+  // Función para aplicar porcentaje al precio
+  const applyPercentage = (percentage) => {
+    if (!price) return;
+    
+    // Si ya se tiene seleccionado ese porcentaje, se quita la ganancia y se restablece el precio original
+    if (selectedPercentage === percentage) {
+      resetPrice();
+      return;
+    }
+    
+    // Se usa el precio base; si por alguna razón no está definido, se toma el precio actual
+    const baseValue = parseFloat(basePrice || price);
+    if (isNaN(baseValue)) return;
+    
+    const percentValue = parseFloat(percentage);
+    if (isNaN(percentValue)) return;
+    
+    // Se calcula el nuevo precio: precio base + (precio base * porcentaje / 100)
+    const newPrice = baseValue * (1 + percentValue / 100);
+    
+    // Se redondea y se actualiza el precio y el porcentaje seleccionado
+    setPrice(Math.round(newPrice).toString());
+    setSelectedPercentage(percentage);
+  };
+
+  // Función para restablecer el precio al valor original
+  const resetPrice = () => {
+    if (basePrice) {
+      setPrice(basePrice);
+      setSelectedPercentage('');
     }
   };
 
-  const handleBarCodeScanned = ({ data }) => {
+  // Al cambiar el precio manualmente se actualiza también el precio base si no hay porcentaje aplicado
+  const handlePriceChange = (text) => {
+    setPrice(text);
+    if (!selectedPercentage) {
+      setBasePrice(text);
+    }
+  };
+
+  const handleBarCodeScanned = ({ type, data }) => {
+    console.log(`Código escaneado: ${data} (Tipo: ${type})`);
     setBarcode(data);
     setScanning(false);
   };
@@ -73,14 +96,6 @@ export default function AddProductScreen({ navigation, route }) {
   const validateForm = () => {
     if (!barcode || !name || !price || !stock || !category) {
       Alert.alert('Error', 'Todos los campos son obligatorios');
-      return false;
-    }
-    if (isNaN(price) || parseFloat(price) <= 0) {
-      Alert.alert('Error', 'El precio debe ser un número válido mayor a 0');
-      return false;
-    }
-    if (isNaN(stock) || parseInt(stock) < 0) {
-      Alert.alert('Error', 'El stock debe ser un número válido mayor o igual a 0');
       return false;
     }
     return true;
@@ -91,51 +106,86 @@ export default function AddProductScreen({ navigation, route }) {
     
     setLoading(true);
     try {
-      // Verificar si ya existe un producto con el mismo código de barras para este usuario
+      const productsRef = collection(db, 'products');
       const q = query(
-        collection(db, 'products'), 
+        productsRef, 
         where('barcode', '==', barcode),
         where('userId', '==', auth.currentUser.uid)
       );
       const querySnapshot = await getDocs(q);
       
       if (!querySnapshot.empty) {
-        Alert.alert('Error', 'Ya existe un producto con este código de barras');
-        setLoading(false);
+        Alert.alert(
+          'Producto existente',
+          'Ya existe un producto con este código de barras. ¿Deseas actualizar su stock?',
+          [
+            {
+              text: 'Cancelar',
+              style: 'cancel',
+              onPress: () => setLoading(false)
+            },
+            {
+              text: 'Actualizar',
+              onPress: async () => {
+                setLoading(false);
+                navigation.navigate('EditProduct', { productId: querySnapshot.docs[0].id });
+              }
+            }
+          ]
+        );
         return;
       }
       
-      // Agregar el nuevo producto con el ID del usuario y fecha de vencimiento
-      await addDoc(collection(db, 'products'), {
+      const productData = {
         barcode,
         name,
         price: parseFloat(price),
         stock: parseInt(stock),
         category,
-        expiryDate: expiryDate ? expiryDate : null,
+        expiryDate,
         createdAt: new Date(),
+        updatedAt: new Date(),
         userId: auth.currentUser.uid
-      });
+      };
+      
+      await addDoc(collection(db, 'products'), productData);
       
       Alert.alert(
-        'Éxito', 
-        'Producto agregado correctamente',
-        [{ 
-          text: 'OK', 
-          onPress: () => {
-            navigation.goBack();
+        'Producto agregado',
+        'El producto se ha agregado correctamente',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setBarcode('');
+              setName('');
+              setPrice('');
+              setBasePrice('');
+              setSelectedPercentage('');
+              setStock('');
+              setCategory('');
+              setExpiryDate(new Date());
+              navigation.navigate('ProductList');
+            }
           }
-        }]
+        ]
       );
     } catch (error) {
       console.error('Error al agregar producto:', error);
-      Alert.alert('Error', 'No se pudo agregar el producto');
+      Alert.alert('Error', 'No se pudo agregar el producto. Inténtalo de nuevo.');
     } finally {
       setLoading(false);
     }
   };
 
-  const CategoryModal = () => (
+  const onChangeDate = (event, selectedDate) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      setExpiryDate(selectedDate);
+    }
+  };
+
+  const renderCategoryModal = () => (
     <Modal
       animationType="slide"
       transparent={true}
@@ -146,7 +196,7 @@ export default function AddProductScreen({ navigation, route }) {
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Seleccionar Categoría</Text>
           <FlatList
-            data={predefinedCategories}
+            data={categories}
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={[
@@ -173,9 +223,7 @@ export default function AddProductScreen({ navigation, route }) {
           />
           <TouchableOpacity
             style={styles.modalCloseButton}
-            onPress={() => {
-              setShowCategoryModal(false);
-            }}
+            onPress={() => setShowCategoryModal(false)}
           >
             <Text style={styles.modalCloseButtonText}>Cerrar</Text>
           </TouchableOpacity>
@@ -184,172 +232,194 @@ export default function AddProductScreen({ navigation, route }) {
     </Modal>
   );
 
-  const onChangeDate = (event, selectedDate) => {
-    setShowDatePicker(false);
-    if (selectedDate) {
-      setExpiryDate(selectedDate);
-    }
-  };
+  if (hasPermission === null) {
+    return (
+      <View style={styles.cameraPermissionContainer}>
+        <Text>Solicitando permiso de cámara...</Text>
+      </View>
+    );
+  }
 
-  // Función para guardar categoría personalizada
-  const saveCustomCategory = async (categoryId, categoryName) => {
-    try {
-      // Obtener categorías personalizadas existentes
-      const customCategoriesRef = doc(db, 'customCategories', auth.currentUser.uid);
-      const customCategoriesDoc = await getDoc(customCategoriesRef);
-      
-      let customCategories = {};
-      if (customCategoriesDoc.exists()) {
-        customCategories = customCategoriesDoc.data().categories || {};
-      }
-      
-      // Añadir nueva categoría
-      customCategories[categoryId] = {
-        name: categoryName,
-        icon: 'pricetag-outline' // Icono predeterminado
-      };
-      
-      // Guardar en Firestore
-      await setDoc(customCategoriesRef, { categories: customCategories }, { merge: true });
-      
-      // Mostrar confirmación
-      Alert.alert('Categoría creada', `La categoría "${categoryName}" ha sido creada`);
-    } catch (error) {
-      console.error('Error al guardar categoría personalizada:', error);
-      Alert.alert('Error', 'No se pudo guardar la categoría');
-    }
-  };
+  if (hasPermission === false) {
+    return (
+      <View style={styles.cameraPermissionContainer}>
+        <Text>No hay acceso a la cámara</Text>
+      </View>
+    );
+  }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
+    <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.header}>
-          {/* Eliminar este texto si está duplicado */}
-          {/* <Text style={styles.headerTitle}>Agregar Producto</Text> */}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Código de Barras</Text>
+          <View style={styles.barcodeContainer}>
+            <TextInput
+              style={styles.barcodeInput}
+              value={barcode}
+              onChangeText={setBarcode}
+              placeholder="Escanea o ingresa el código"
+              keyboardType="numeric"
+            />
+            <TouchableOpacity
+              style={styles.scanButton}
+              onPress={() => setScanning(true)}
+            >
+              <Ionicons name="scan-outline" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
         
-        <View style={styles.barcodeContainer}>
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Nombre del Producto</Text>
           <TextInput
-            style={[styles.input, { flex: 1 }]}
-            placeholder="Código de barras"
-            value={barcode}
-            onChangeText={setBarcode}
-            editable={!scanning}
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Ingresa el nombre"
           />
-          <TouchableOpacity 
-            style={styles.scanButton}
-            onPress={requestCameraPermission}
+        </View>
+        
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Precio</Text>
+          <TextInput
+            style={styles.input}
+            value={price}
+            onChangeText={handlePriceChange}
+            placeholder="Ingresa el precio"
+            keyboardType="numeric"
+          />
+          
+          {price ? (
+            <>
+              <View style={styles.percentageHeader}>
+                <Text style={styles.sublabel}>Aplicar porcentaje de ganancia:</Text>
+                {selectedPercentage ? (
+                  <TouchableOpacity style={styles.resetButton} onPress={resetPrice}>
+                    <Text style={styles.resetButtonText}>Quitar</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              
+              <View style={styles.percentageButtonsContainer}>
+                {commonPercentages.map(percent => (
+                  <TouchableOpacity
+                    key={percent}
+                    style={[
+                      styles.percentageButton,
+                      selectedPercentage === percent && styles.selectedPercentageButton
+                    ]}
+                    onPress={() => applyPercentage(percent)}
+                  >
+                    <Text
+                      style={[
+                        styles.percentageButtonText,
+                        selectedPercentage === percent && styles.selectedPercentageButtonText
+                      ]}
+                    >
+                      {percent}%
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          ) : null}
+        </View>
+        
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Stock</Text>
+          <TextInput
+            style={styles.input}
+            value={stock}
+            onChangeText={setStock}
+            placeholder="Ingresa la cantidad"
+            keyboardType="numeric"
+          />
+        </View>
+        
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Categoría</Text>
+          <TouchableOpacity
+            style={styles.categorySelector}
+            onPress={() => setShowCategoryModal(true)}
           >
-            <Text style={styles.scanButtonText}>Escanear</Text>
+            <Text
+              style={category ? styles.categoryText : styles.categoryPlaceholder}
+            >
+              {category ? categories.find(c => c.id === category)?.name : 'Seleccionar categoría'}
+            </Text>
+            <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
           </TouchableOpacity>
         </View>
         
-        <TextInput
-          style={styles.input}
-          placeholder="Nombre del producto"
-          value={name}
-          onChangeText={setName}
-          editable={!scanning}
-        />
-
-        <TouchableOpacity
-          style={styles.categorySelector}
-          onPress={() => setShowCategoryModal(true)}
-        >
-          <Text style={[
-            styles.categoryText,
-            !category && styles.categoryPlaceholder
-          ]}>
-            {category ? 
-              categories.find(cat => cat.id === category)?.name : 
-              'Seleccionar categoría'
-            }
-          </Text>
-          <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
-        </TouchableOpacity>
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Precio"
-          value={price}
-          onChangeText={setPrice}
-          keyboardType="decimal-pad"
-          editable={!scanning}
-        />
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Stock"
-          value={stock}
-          onChangeText={setStock}
-          keyboardType="numeric"
-          editable={!scanning}
-        />
-        
-        <TouchableOpacity
-          style={styles.dateSelector}
-          onPress={() => setShowDatePicker(true)}
-        >
-          <View style={styles.dateSelectorContent}>
-            <Ionicons name="calendar" size={24} color={colors.text.secondary} />
-            <Text style={[
-              styles.dateText,
-              !expiryDate && styles.datePlaceholder
-            ]}>
-              {expiryDate ? expiryDate.toLocaleDateString() : 'Fecha de vencimiento (opcional)'}
+        <View style={styles.formGroup}>
+          <Text style={styles.label}>Fecha de Vencimiento (opcional)</Text>
+          <TouchableOpacity
+            style={styles.dateSelector}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={styles.dateText}>
+              {expiryDate.toLocaleDateString()}
             </Text>
-          </View>
-        </TouchableOpacity>
+            <Ionicons name="calendar-outline" size={24} color={colors.text.secondary} />
+          </TouchableOpacity>
+        </View>
         
-        <TouchableOpacity 
-          style={[styles.addButton, loading && styles.disabledButton]} 
+        <TouchableOpacity
+          style={[styles.addButton, loading && { opacity: 0.7 }]}
           onPress={handleAddProduct}
-          disabled={loading || scanning}
+          disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="white" />
           ) : (
             <Text style={styles.addButtonText}>Agregar Producto</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
 
-      <CategoryModal />
+      {renderCategoryModal()}
 
-      {scanning && hasPermission && (
-  <View style={StyleSheet.absoluteFill}>
-    <Camera
-      style={styles.camera}
-      onBarCodeScanned={handleBarCodeScanned}
-      barCodeScannerSettings={{
-        barCodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
-      }}
-    >
-      <View style={styles.overlay}>
-        <Text style={styles.scanText}>Escanea el código de barras</Text>
-        <View style={styles.scanArea}>
-          <View style={styles.scanLine} />
-        </View>
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={() => setScanning(false)}
+      {scanning && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={scanning}
+          onRequestClose={() => setScanning(false)}
         >
-          <Text style={styles.cancelButtonText}>Cancelar</Text>
-        </TouchableOpacity>
-      </View>
-    </Camera>
-  </View>
-)}
-
-
+          <View style={StyleSheet.absoluteFill}>
+            <CameraView
+              style={StyleSheet.absoluteFillObject}
+              onBarcodeScanned={handleBarCodeScanned}
+              cameraType="back"
+              flashMode="auto"
+            >
+              <View style={styles.scannerOverlay}>
+                <View style={styles.scannerTarget}>
+                  <View style={styles.scanLine} />
+                </View>
+                <Text style={styles.scannerText}>Apunta al código de barras</Text>
+                <TouchableOpacity
+                  style={styles.cancelScanButton}
+                  onPress={() => setScanning(false)}
+                >
+                  <Text style={styles.cancelScanButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            </CameraView>
+          </View>
+        </Modal>
+      )}
+      
       {showDatePicker && (
         <DateTimePicker
-          value={expiryDate || new Date()}
+          value={expiryDate}
           mode="date"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display="default"
           onChange={onChangeDate}
           minimumDate={new Date()}
         />
@@ -361,105 +431,108 @@ export default function AddProductScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
-  scrollContainer: {
+  scrollContent: {
     padding: 20,
   },
-  header: {
-    // Eliminar este texto si está duplicado
-    // <Text style={styles.headerTitle}>Agregar Producto</Text>
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  formGroup: {
+    marginBottom: 15,
+  },
+  label: {
+    fontSize: 16,
+    color: colors.text.primary,
+    marginBottom: 5,
+  },
+  sublabel: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  input: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    padding: 10,
+    fontSize: 16,
   },
   barcodeContainer: {
     flexDirection: 'row',
-    marginBottom: 15,
+    alignItems: 'center',
   },
-  input: {
-    width: '100%',
-    height: 50,
+  barcodeInput: {
+    flex: 1,
     backgroundColor: 'white',
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 15,
     borderWidth: 1,
-    borderColor: '#ddd',
-    color: '#000',
+    borderColor: colors.border,
+    borderRadius: 5,
+    padding: 10,
+    fontSize: 16,
   },
   scanButton: {
-    backgroundColor: '#28a745',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 15,
+    backgroundColor: colors.primary,
+    padding: 10,
     borderRadius: 5,
     marginLeft: 10,
   },
-  scanButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-  },
-  addButton: {
-    width: '100%',
-    height: 50,
-    backgroundColor: '#007bff',
-    borderRadius: 5,
-    justifyContent: 'center',
+  percentageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 10,
   },
-  disabledButton: {
-    backgroundColor: '#cccccc',
+  resetButton: {
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 15,
   },
-  addButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  resetButtonText: {
+    fontSize: 12,
+    color: '#666',
   },
-  camera: {
-    flex: 1,
+  percentageButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 5,
   },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  percentageButton: {
+    backgroundColor: '#f0f0f0',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginRight: 8,
+    marginBottom: 8,
   },
-  scanText: {
-    color: 'white',
-    fontSize: 18,
-    marginBottom: 20,
+  selectedPercentageButton: {
+    backgroundColor: colors.primary,
   },
-  scanArea: {
-    width: '80%',
-    height: 200,
-    borderWidth: 2,
-    borderColor: 'green',
-    justifyContent: 'center',
+  percentageButtonText: {
+    fontSize: 14,
+    color: '#333',
   },
-  scanLine: {
-    height: 2,
-    backgroundColor: 'red',
-  },
-  cancelButton: {
-    backgroundColor: '#dc3545',
-    padding: 15,
-    borderRadius: 5,
-    marginTop: 30,
-  },
-  cancelButtonText: {
+  selectedPercentageButtonText: {
     color: 'white',
     fontWeight: 'bold',
   },
   categorySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.background,
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    height: 50,
+    backgroundColor: 'white',
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: 5,
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   categoryText: {
     fontSize: 16,
@@ -467,6 +540,32 @@ const styles = StyleSheet.create({
   },
   categoryPlaceholder: {
     color: colors.text.secondary,
+  },
+  dateSelector: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  addButton: {
+    backgroundColor: colors.primary,
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  addButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   modalContainer: {
     flex: 1,
@@ -500,9 +599,10 @@ const styles = StyleSheet.create({
     marginLeft: 15,
   },
   categoryItemSelected: {
-    backgroundColor: colors.background,
+    backgroundColor: '#e8f5e9',
   },
   categoryItemTextSelected: {
+    color: colors.primary,
     fontWeight: 'bold',
   },
   modalCloseButton: {
@@ -517,55 +617,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  dateSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.background,
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    height: 50,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  dateSelectorContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-  },
-  dateText: {
-    fontSize: 16,
-    color: colors.text.primary,
-    marginLeft: 10,
-  },
-  datePlaceholder: {
-    color: colors.text.secondary,
-  },
-  newCategoryContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-  },
-  newCategoryInput: {
+  scannerOverlay: {
     flex: 1,
-    height: 50,
-    backgroundColor: 'white',
-    borderRadius: 5,
-    paddingHorizontal: 15,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    color: '#000',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  newCategoryButton: {
-    backgroundColor: '#007bff',
-    padding: 15,
-    borderRadius: 5,
-    marginLeft: 10,
+  scannerTarget: {
+    width: 300,
+    height: 100,
+    borderWidth: 2,
+    borderColor: 'white',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  newCategoryButtonText: {
+  scanLine: {
+    height: 2,
+    width: '90%',
+    backgroundColor: 'red',
+  },
+  scannerText: {
+    color: 'white',
+    fontSize: 16,
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  cancelScanButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+  },
+  cancelScanButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
   },
-}); 
+});
