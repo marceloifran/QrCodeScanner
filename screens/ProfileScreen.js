@@ -4,36 +4,40 @@ import {
   View, 
   Text, 
   TouchableOpacity, 
-  Alert,
-  ScrollView,
+  Image, 
   ActivityIndicator,
-  Modal
+  Alert,
+  ScrollView
 } from 'react-native';
-import { 
-  getAuth, 
-  updatePassword, 
-  sendPasswordResetEmail,
-  signOut 
-} from 'firebase/auth';
+import { signOut } from 'firebase/auth';
+import { auth, db } from '../firebase/config';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
-import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
 
 export default function ProfileScreen({ navigation }) {
-  const [userData, setUserData] = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const auth = getAuth();
+  const [businessInfo, setBusinessInfo] = useState(null);
 
   useEffect(() => {
     loadUserData();
   }, []);
 
   const loadUserData = async () => {
+    setLoading(true);
     try {
-      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-      if (userDoc.exists()) {
-        setUserData(userDoc.data());
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        setUser(currentUser);
+        
+        // Cargar información del negocio
+        const businessInfoRef = doc(db, 'businessInfo', currentUser.uid);
+        const businessInfoDoc = await getDoc(businessInfoRef);
+        
+        if (businessInfoDoc.exists()) {
+          setBusinessInfo(businessInfoDoc.data());
+        }
       }
     } catch (error) {
       console.error('Error al cargar datos del usuario:', error);
@@ -42,137 +46,144 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  const handleResetPassword = async () => {
+  const handleLogout = async () => {
     try {
-      await sendPasswordResetEmail(auth, auth.currentUser.email);
-      Alert.alert(
-        'Email enviado', 
-        'Se ha enviado un correo para restablecer tu contraseña'
-      );
+      await signOut(auth);
     } catch (error) {
-      Alert.alert('Error', 'No se pudo enviar el email de recuperación');
+      console.error('Error al cerrar sesión:', error);
+      Alert.alert('Error', 'No se pudo cerrar sesión');
     }
   };
 
-  const handleLogout = async () => {
-    Alert.alert(
-      'Cerrar sesión',
-      '¿Estás seguro que deseas cerrar sesión?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Cerrar sesión', 
-          onPress: async () => {
-            try {
-              await signOut(auth);
-            } catch (error) {
-              console.error('Error al cerrar sesión:', error);
-            }
-          },
-          style: 'destructive'
-        }
-      ]
-    );
-  };
-
-  if (loading) {
-    return <ActivityIndicator size="large" color={colors.primary} />;
-  }
-
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.avatarContainer}>
-          <Ionicons name="person-circle" size={80} color={colors.primary} />
-        </View>
-        <Text style={styles.email}>{auth.currentUser.email}</Text>
-        <Text style={styles.role}>{userData?.role || 'Usuario'}</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Cuenta</Text>
-        
-        <TouchableOpacity 
-          style={styles.option}
-          onPress={handleResetPassword}
-        >
-          <Ionicons name="key-outline" size={24} color={colors.text.primary} />
-          <Text style={styles.optionText}>Cambiar contraseña</Text>
-          <Ionicons name="chevron-forward" size={24} color={colors.text.secondary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.option}
-          onPress={handleLogout}
-        >
-          <Ionicons name="log-out-outline" size={24} color={colors.error} />
-          <Text style={[styles.optionText, { color: colors.error }]}>
-            Cerrar sesión
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Información</Text>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoLabel}>Último acceso</Text>
-          <Text style={styles.infoValue}>
-            {userData?.lastLogin?.toDate().toLocaleString() || 'N/A'}
-          </Text>
-        </View>
-        <View style={styles.infoItem}>
-          <Text style={styles.infoLabel}>Cuenta creada</Text>
-          <Text style={styles.infoValue}>
-            {userData?.createdAt?.toDate().toLocaleString() || 'N/A'}
-          </Text>
-        </View>
-      </View>
-    </ScrollView>
+    <View style={styles.container}>
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
+      ) : (
+        <ScrollView>
+          <View style={styles.profileHeader}>
+            <View style={styles.avatarContainer}>
+              {user?.photoURL ? (
+                <Image source={{ uri: user.photoURL }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarText}>
+                    {businessInfo?.name ? businessInfo.name.charAt(0).toUpperCase() : user?.email?.charAt(0).toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
+            </View>
+            
+            <Text style={styles.businessName}>
+              {businessInfo?.name || 'Mi Negocio'}
+            </Text>
+            
+            <Text style={styles.email}>{user?.email}</Text>
+          </View>
+          
+          <View style={styles.optionsContainer}>
+            <TouchableOpacity 
+              style={styles.optionItem}
+              onPress={() => navigation.navigate('NotificationSettings')}
+            >
+              <Ionicons name="notifications-outline" size={24} color={colors.primary} />
+              <Text style={styles.optionText}>Configurar Notificaciones</Text>
+              <Ionicons name="chevron-forward" size={24} color="#ccc" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionItem}
+              onPress={() => navigation.navigate('BusinessInfo')}
+            >
+              <Ionicons name="business-outline" size={24} color={colors.primary} />
+              <Text style={styles.optionText}>Información del Negocio</Text>
+              <Ionicons name="chevron-forward" size={24} color="#ccc" />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionItem}
+              onPress={() => navigation.navigate('Settings')}
+            >
+              <Ionicons name="settings-outline" size={24} color={colors.primary} />
+              <Text style={styles.optionText}>Configuración</Text>
+              <Ionicons name="chevron-forward" size={24} color="#ccc" />
+            </TouchableOpacity>
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.logoutButton}
+            onPress={handleLogout}
+          >
+            <Ionicons name="log-out-outline" size={24} color="white" />
+            <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'white',
   },
-  header: {
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  },
+  profileHeader: {
+    alignItems: 'center',
+    padding: 30,
+    backgroundColor: colors.primary,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   avatarContainer: {
-    marginBottom: 10,
-  },
-  email: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 5,
-  },
-  role: {
-    fontSize: 14,
-    color: colors.text.secondary,
-  },
-  section: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text.primary,
     marginBottom: 15,
   },
-  option: {
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: 'white',
+  },
+  avatarPlaceholder: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: 'white',
+  },
+  avatarText: {
+    fontSize: 40,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  businessName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 5,
+    color: 'white',
+  },
+  email: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  optionsContainer: {
+    marginTop: 20,
+  },
+  optionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 15,
+    padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: '#f0f0f0',
   },
   optionText: {
     flex: 1,
@@ -180,16 +191,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text.primary,
   },
-  infoItem: {
-    marginBottom: 15,
+  logoutButton: {
+    backgroundColor: colors.error,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    margin: 20,
+    borderRadius: 10,
   },
-  infoLabel: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 5,
-  },
-  infoValue: {
+  logoutButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
     fontSize: 16,
-    color: colors.text.primary,
+    marginLeft: 10,
   },
 }); 

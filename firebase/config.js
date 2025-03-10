@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getStorage } from "firebase/storage";
 
 // Configuración de Firebase
 const firebaseConfig = {
@@ -42,5 +43,7 @@ const db = getFirestore(app);
 export const getCurrentUser = () => {
   return auth.currentUser;
 };
+
+export const storage = getStorage(app);
 
 export { auth, app, db }; 

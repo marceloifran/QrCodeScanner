@@ -6,69 +6,83 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator 
+  ActivityIndicator,
+  Alert,
+  Share,
+  Platform
 } from 'react-native';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { formatPrice } from '../utils/formatters';
+import { doc, getDoc } from 'firebase/firestore';
 
-export default function SalesHistoryScreen() {
+export default function SalesHistoryScreen({ navigation }) {
   const [sales, setSales] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [filterType, setFilterType] = useState('day'); // 'day', 'week', 'month', 'all'
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all'); // 'today', 'week', 'month', 'all'
   const [searchQuery, setSearchQuery] = useState('');
   const [totalAmount, setTotalAmount] = useState(0);
+  const [businessInfo, setBusinessInfo] = useState(null);
+  const [printLoading, setPrintLoading] = useState(false);
 
-  const loadSales = async (filter = filterType) => {
+  const loadSales = async () => {
     setLoading(true);
     try {
-      let startDate = new Date();
-      let q;
-
-      switch (filter) {
-        case 'day':
-          startDate.setHours(0, 0, 0, 0);
-          q = query(
-            collection(db, 'sales'),
-            where('date', '>=', startDate),
-            orderBy('date', 'desc')
-          );
-          break;
-        case 'week':
-          startDate.setDate(startDate.getDate() - 7);
-          q = query(
-            collection(db, 'sales'),
-            where('date', '>=', startDate),
-            orderBy('date', 'desc')
-          );
-          break;
-        case 'month':
-          startDate.setMonth(startDate.getMonth() - 1);
-          q = query(
-            collection(db, 'sales'),
-            where('date', '>=', startDate),
-            orderBy('date', 'desc')
-          );
-          break;
-        default:
-          q = query(
-            collection(db, 'sales'),
-            where('userId', '==', auth.currentUser.uid)
-          );
+      let salesQuery;
+      const now = new Date();
+      
+      if (filter === 'today') {
+        // Ventas de hoy
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        salesQuery = query(
+          collection(db, 'sales'),
+          where('userId', '==', auth.currentUser.uid),
+          where('date', '>=', Timestamp.fromDate(startOfDay)),
+          orderBy('date', 'desc')
+        );
+      } else if (filter === 'week') {
+        // Ventas de la última semana
+        const oneWeekAgo = new Date(now);
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        salesQuery = query(
+          collection(db, 'sales'),
+          where('userId', '==', auth.currentUser.uid),
+          where('date', '>=', Timestamp.fromDate(oneWeekAgo)),
+          orderBy('date', 'desc')
+        );
+      } else if (filter === 'month') {
+        // Ventas del último mes
+        const oneMonthAgo = new Date(now);
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+        salesQuery = query(
+          collection(db, 'sales'),
+          where('userId', '==', auth.currentUser.uid),
+          where('date', '>=', Timestamp.fromDate(oneMonthAgo)),
+          orderBy('date', 'desc')
+        );
+      } else {
+        // Todas las ventas
+        salesQuery = query(
+          collection(db, 'sales'),
+          where('userId', '==', auth.currentUser.uid),
+          orderBy('date', 'desc')
+        );
       }
-
-      const querySnapshot = await getDocs(q);
+      
+      const querySnapshot = await getDocs(salesQuery);
       const salesData = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        date: doc.data().date.toDate()
+        date: doc.data().date?.toDate() || new Date()
       }));
-
+      
       setSales(salesData);
       calculateTotal(salesData);
     } catch (error) {
-      console.error('Error loading sales:', error);
+      console.error('Error al cargar ventas:', error);
+      Alert.alert('Error', 'No se pudieron cargar las ventas');
     } finally {
       setLoading(false);
     }
@@ -99,33 +113,58 @@ export default function SalesHistoryScreen() {
     });
   };
 
+  const loadBusinessInfo = async () => {
+    try {
+      const businessInfoRef = doc(db, 'businessInfo', auth.currentUser.uid);
+      const businessInfoDoc = await getDoc(businessInfoRef);
+      
+      if (businessInfoDoc.exists()) {
+        setBusinessInfo(businessInfoDoc.data());
+      }
+    } catch (error) {
+      console.error('Error al cargar información del negocio:', error);
+    }
+  };
+
   useEffect(() => {
     loadSales();
-  }, [filterType]);
+    loadBusinessInfo();
+  }, [filter]);
 
-  const FilterButton = ({ title, type }) => (
-    <TouchableOpacity 
-      style={[
-        styles.filterButton, 
-        filterType === type && styles.filterButtonActive
-      ]}
-      onPress={() => setFilterType(type)}
-    >
-      <Text style={[
-        styles.filterButtonText,
-        filterType === type && styles.filterButtonTextActive
-      ]}>
-        {title}
-      </Text>
-    </TouchableOpacity>
-  );
+  const getTotalRevenue = () => {
+    return sales.reduce((sum, sale) => sum + sale.total, 0);
+  };
+
+  const getFilterTitle = () => {
+    switch (filter) {
+      case 'today': return 'Hoy';
+      case 'week': return 'Última Semana';
+      case 'month': return 'Último Mes';
+      default: return 'Todas las Ventas';
+    }
+  };
+
+  const formatDate = (date) => {
+    return date.toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Historial de Ventas</Text>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.navigate('Dashboard')}
+        >
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
         <Text style={styles.totalAmount}>
-          Total: ${totalAmount.toFixed(2)}
+          Ventas: {sales.length} | Total: ${getTotalRevenue().toFixed(2)}
         </Text>
       </View>
 
@@ -140,14 +179,39 @@ export default function SalesHistoryScreen() {
       </View>
 
       <View style={styles.filterContainer}>
-        <FilterButton title="Hoy" type="day" />
-        <FilterButton title="Semana" type="week" />
-        <FilterButton title="Mes" type="month" />
-        <FilterButton title="Todo" type="all" />
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'today' && styles.filterButtonActive]}
+          onPress={() => setFilter('today')}
+        >
+          <Text style={[styles.filterButtonText, filter === 'today' && styles.filterButtonTextActive]}>Hoy</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'week' && styles.filterButtonActive]}
+          onPress={() => setFilter('week')}
+        >
+          <Text style={[styles.filterButtonText, filter === 'week' && styles.filterButtonTextActive]}>Semana</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'month' && styles.filterButtonActive]}
+          onPress={() => setFilter('month')}
+        >
+          <Text style={[styles.filterButtonText, filter === 'month' && styles.filterButtonTextActive]}>Mes</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
+          onPress={() => setFilter('all')}
+        >
+          <Text style={[styles.filterButtonText, filter === 'all' && styles.filterButtonTextActive]}>Todas</Text>
+        </TouchableOpacity>
       </View>
 
+    
+
       {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       ) : (
         <FlatList
           data={filterSales()}
@@ -156,13 +220,7 @@ export default function SalesHistoryScreen() {
             <View style={styles.saleCard}>
               <View style={styles.saleHeader}>
                 <Text style={styles.saleDate}>
-                  {item.date.toLocaleDateString('es-ES', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
+                  {formatDate(item.date)}
                 </Text>
                 <Text style={styles.saleTotal}>
                   ${item.total.toFixed(2)}
@@ -178,6 +236,12 @@ export default function SalesHistoryScreen() {
             </View>
           )}
           contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="receipt-outline" size={50} color="#ccc" />
+              <Text style={styles.emptyText}>No hay ventas para mostrar</Text>
+            </View>
+          }
         />
       )}
     </View>
@@ -194,11 +258,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: colors.text.primary,
   },
   totalAmount: {
     fontSize: 18,
@@ -245,6 +304,29 @@ const styles = StyleSheet.create({
   filterButtonTextActive: {
     color: colors.background,
   },
+  summaryContainer: {
+    flexDirection: 'row',
+    padding: 15,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+    alignItems: 'center',
+  },
+  summaryItem: {
+    flex: 1,
+  },
+  summaryLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  loader: {
+    marginTop: 50,
+  },
   listContainer: {
     padding: 10,
   },
@@ -279,5 +361,22 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     fontSize: 14,
     marginBottom: 5,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 50,
+  },
+  emptyText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 10,
+    top: 10,
+    zIndex: 10,
   },
 }); 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -10,17 +10,18 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Modal
+  Modal,
+  FlatList
 } from 'react-native';
-import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { Camera, CameraView } from 'expo-camera';
 import { colors } from '../theme/colors';
-import { categories } from '../constants/categories';
+import { categories, loadCustomCategories, predefinedCategories } from '../constants/categories';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-export default function AddProductScreen({ navigation }) {
+export default function AddProductScreen({ navigation, route }) {
   const [barcode, setBarcode] = useState('');
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -32,6 +33,27 @@ export default function AddProductScreen({ navigation }) {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [expiryDate, setExpiryDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
+  const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(false);
+
+  useEffect(() => {
+    // Si se recibió un código de barras como parámetro, establecerlo en el estado
+    if (route.params?.barcode) {
+      setBarcode(route.params.barcode);
+      console.log("Código de barras recibido:", route.params.barcode);
+    }
+  }, [route.params?.barcode]);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      await loadCustomCategories();
+      // Forzar actualización del estado para reflejar las nuevas categorías
+      setForceUpdate(prev => !prev);
+    };
+    
+    loadCategories();
+  }, []);
 
   const requestCameraPermission = async () => {
     const { status } = await Camera.requestCameraPermissionsAsync();
@@ -98,7 +120,12 @@ export default function AddProductScreen({ navigation }) {
       Alert.alert(
         'Éxito', 
         'Producto agregado correctamente',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            navigation.goBack();
+          }
+        }]
       );
     } catch (error) {
       console.error('Error al agregar producto:', error);
@@ -118,24 +145,37 @@ export default function AddProductScreen({ navigation }) {
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Seleccionar Categoría</Text>
-          <ScrollView>
-            {categories.map((cat) => (
+          <FlatList
+            data={predefinedCategories}
+            renderItem={({ item }) => (
               <TouchableOpacity
-                key={cat.id}
-                style={styles.categoryItem}
+                style={[
+                  styles.categoryItem,
+                  category === item.id && styles.categoryItemSelected
+                ]}
                 onPress={() => {
-                  setCategory(cat.id);
+                  setCategory(item.id);
                   setShowCategoryModal(false);
                 }}
               >
-                <Ionicons name={cat.icon} size={24} color={colors.primary} />
-                <Text style={styles.categoryItemText}>{cat.name}</Text>
+                <Ionicons name={item.icon} size={24} color={colors.primary} />
+                <Text
+                  style={[
+                    styles.categoryItemText,
+                    category === item.id && styles.categoryItemTextSelected
+                  ]}
+                >
+                  {item.name}
+                </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            )}
+            keyExtractor={item => item.id}
+          />
           <TouchableOpacity
             style={styles.modalCloseButton}
-            onPress={() => setShowCategoryModal(false)}
+            onPress={() => {
+              setShowCategoryModal(false);
+            }}
           >
             <Text style={styles.modalCloseButtonText}>Cerrar</Text>
           </TouchableOpacity>
@@ -151,13 +191,45 @@ export default function AddProductScreen({ navigation }) {
     }
   };
 
+  // Función para guardar categoría personalizada
+  const saveCustomCategory = async (categoryId, categoryName) => {
+    try {
+      // Obtener categorías personalizadas existentes
+      const customCategoriesRef = doc(db, 'customCategories', auth.currentUser.uid);
+      const customCategoriesDoc = await getDoc(customCategoriesRef);
+      
+      let customCategories = {};
+      if (customCategoriesDoc.exists()) {
+        customCategories = customCategoriesDoc.data().categories || {};
+      }
+      
+      // Añadir nueva categoría
+      customCategories[categoryId] = {
+        name: categoryName,
+        icon: 'pricetag-outline' // Icono predeterminado
+      };
+      
+      // Guardar en Firestore
+      await setDoc(customCategoriesRef, { categories: customCategories }, { merge: true });
+      
+      // Mostrar confirmación
+      Alert.alert('Categoría creada', `La categoría "${categoryName}" ha sido creada`);
+    } catch (error) {
+      console.error('Error al guardar categoría personalizada:', error);
+      Alert.alert('Error', 'No se pudo guardar la categoría');
+    }
+  };
+
   return (
     <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Text style={styles.title}>Agregar Producto</Text>
+        <View style={styles.header}>
+          {/* Eliminar este texto si está duplicado */}
+          {/* <Text style={styles.headerTitle}>Agregar Producto</Text> */}
+        </View>
         
         <View style={styles.barcodeContainer}>
           <TextInput
@@ -248,29 +320,30 @@ export default function AddProductScreen({ navigation }) {
       <CategoryModal />
 
       {scanning && hasPermission && (
-        <View style={StyleSheet.absoluteFill}>
-          <CameraView
-            style={styles.camera}
-            onBarcodeScanned={handleBarCodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
-            }}
-          >
-            <View style={styles.overlay}>
-              <Text style={styles.scanText}>Escanea el código de barras</Text>
-              <View style={styles.scanArea}>
-                <View style={styles.scanLine} />
-              </View>
-              <TouchableOpacity 
-                style={styles.cancelButton}
-                onPress={() => setScanning(false)}
-              >
-                <Text style={styles.cancelButtonText}>Cancelar</Text>
-              </TouchableOpacity>
-            </View>
-          </CameraView>
+  <View style={StyleSheet.absoluteFill}>
+    <Camera
+      style={styles.camera}
+      onBarCodeScanned={handleBarCodeScanned}
+      barCodeScannerSettings={{
+        barCodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
+      }}
+    >
+      <View style={styles.overlay}>
+        <Text style={styles.scanText}>Escanea el código de barras</Text>
+        <View style={styles.scanArea}>
+          <View style={styles.scanLine} />
         </View>
-      )}
+        <TouchableOpacity 
+          style={styles.cancelButton}
+          onPress={() => setScanning(false)}
+        >
+          <Text style={styles.cancelButtonText}>Cancelar</Text>
+        </TouchableOpacity>
+      </View>
+    </Camera>
+  </View>
+)}
+
 
       {showDatePicker && (
         <DateTimePicker
@@ -293,12 +366,9 @@ const styles = StyleSheet.create({
   scrollContainer: {
     padding: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 30,
-    textAlign: 'center',
-    color: '#333',
+  header: {
+    // Eliminar este texto si está duplicado
+    // <Text style={styles.headerTitle}>Agregar Producto</Text>
   },
   barcodeContainer: {
     flexDirection: 'row',
@@ -429,6 +499,12 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     marginLeft: 15,
   },
+  categoryItemSelected: {
+    backgroundColor: colors.background,
+  },
+  categoryItemTextSelected: {
+    fontWeight: 'bold',
+  },
   modalCloseButton: {
     marginTop: 20,
     padding: 15,
@@ -465,5 +541,31 @@ const styles = StyleSheet.create({
   },
   datePlaceholder: {
     color: colors.text.secondary,
+  },
+  newCategoryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+  },
+  newCategoryInput: {
+    flex: 1,
+    height: 50,
+    backgroundColor: 'white',
+    borderRadius: 5,
+    paddingHorizontal: 15,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    color: '#000',
+  },
+  newCategoryButton: {
+    backgroundColor: '#007bff',
+    padding: 15,
+    borderRadius: 5,
+    marginLeft: 10,
+  },
+  newCategoryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 }); 

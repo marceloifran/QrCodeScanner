@@ -12,26 +12,70 @@ import {
   ScrollView,
   Modal
 } from 'react-native';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { categories } from '../constants/categories';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-export default function EditProductScreen({ route, navigation }) {
-  const { product } = route.params;
-  const [name, setName] = useState(product.name);
-  const [price, setPrice] = useState(product.price.toString());
-  const [stock, setStock] = useState(product.stock.toString());
-  const [category, setCategory] = useState(product.category || '');
-  const [loading, setLoading] = useState(false);
+export default function EditProductScreen({ navigation, route }) {
+  const [product, setProduct] = useState(null);
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [stock, setStock] = useState('');
+  const [category, setCategory] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [expiryDate, setExpiryDate] = useState(product.expiryDate ? new Date(product.expiryDate.seconds * 1000) : null);
+  const [expiryDate, setExpiryDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
-    if (product.userId !== auth.currentUser.uid) {
+    loadProduct();
+  }, []);
+
+  const loadProduct = async () => {
+    setLoading(true);
+    try {
+      const productId = route.params?.productId;
+      
+      if (!productId) {
+        Alert.alert('Error', 'No se especificó un producto para editar');
+        navigation.goBack();
+        return;
+      }
+      
+      const productDoc = await getDoc(doc(db, 'products', productId));
+      
+      if (!productDoc.exists()) {
+        Alert.alert('Error', 'El producto no existe');
+        navigation.goBack();
+        return;
+      }
+      
+      const productData = {
+        id: productDoc.id,
+        ...productDoc.data()
+      };
+      
+      setProduct(productData);
+      setName(productData.name);
+      setPrice(productData.price.toString());
+      setStock(productData.stock.toString());
+      setCategory(productData.category);
+      setExpiryDate(productData.expiryDate ? new Date(productData.expiryDate.seconds * 1000) : null);
+    } catch (error) {
+      console.error('Error al cargar el producto:', error);
+      Alert.alert('Error', 'No se pudo cargar el producto');
+      navigation.goBack();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (product && product.userId !== auth.currentUser.uid) {
       Alert.alert('Error', 'No tienes permiso para editar este producto');
       navigation.goBack();
     }
@@ -56,7 +100,7 @@ export default function EditProductScreen({ route, navigation }) {
   const handleUpdateProduct = async () => {
     if (!validateForm()) return;
     
-    setLoading(true);
+    setSaving(true);
     try {
       await updateDoc(doc(db, 'products', product.id), {
         name,
@@ -76,7 +120,7 @@ export default function EditProductScreen({ route, navigation }) {
       console.error('Error al actualizar producto:', error);
       Alert.alert('Error', 'No se pudo actualizar el producto');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
@@ -90,14 +134,14 @@ export default function EditProductScreen({ route, navigation }) {
           text: 'Eliminar',
           style: 'destructive',
           onPress: async () => {
-            setLoading(true);
+            setSaving(true);
             try {
               await deleteDoc(doc(db, 'products', product.id));
               navigation.goBack();
             } catch (error) {
               console.error('Error al eliminar producto:', error);
               Alert.alert('Error', 'No se pudo eliminar el producto');
-              setLoading(false);
+              setSaving(false);
             }
           }
         }
@@ -161,103 +205,112 @@ export default function EditProductScreen({ route, navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Text style={styles.title}>Editar Producto</Text>
-        
-        <Text style={styles.label}>Código de barras</Text>
-        <Text style={styles.barcode}>{product.barcode}</Text>
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Nombre del producto"
-          value={name}
-          onChangeText={setName}
-        />
-
-        <TouchableOpacity
-          style={styles.categorySelector}
-          onPress={() => setShowCategoryModal(true)}
-        >
-          <Text style={[
-            styles.categoryText,
-            !category && styles.categoryPlaceholder
-          ]}>
-            {category ? 
-              categories.find(cat => cat.id === category)?.name : 
-              'Seleccionar categoría'
-            }
-          </Text>
-          <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
-        </TouchableOpacity>
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Precio"
-          value={price}
-          onChangeText={setPrice}
-          keyboardType="decimal-pad"
-        />
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Stock"
-          value={stock}
-          onChangeText={setStock}
-          keyboardType="numeric"
-        />
-        
-        <TouchableOpacity
-          style={styles.dateSelector}
-          onPress={() => setShowDatePicker(true)}
-        >
-          <Text style={[
-            styles.dateText,
-            !expiryDate && styles.datePlaceholder
-          ]}>
-            {expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha de vencimiento (opcional)'}
-          </Text>
-          <Ionicons name="calendar" size={24} color={colors.text.secondary} />
-        </TouchableOpacity>
-        
-        {showDatePicker && (
-          <DateTimePicker
-            value={expiryDate || new Date()}
-            mode="date"
-            display="default"
-            onChange={onChangeDate}
-            minimumDate={new Date()}
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.formContainer}>
+          <Text style={styles.label}>Código de barras</Text>
+          <TextInput
+            style={styles.input}
+            value={product?.barcode}
+            editable={false}
           />
-        )}
-        
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity 
-            style={[styles.updateButton, loading && styles.disabledButton]} 
-            onPress={handleUpdateProduct}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Actualizar</Text>
-            )}
-          </TouchableOpacity>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Nombre del producto"
+            value={name}
+            onChangeText={setName}
+          />
 
-          <TouchableOpacity 
-            style={[styles.deleteButton, loading && styles.disabledButton]} 
-            onPress={handleDeleteProduct}
-            disabled={loading}
+          <TouchableOpacity
+            style={styles.categorySelector}
+            onPress={() => setShowCategoryModal(true)}
           >
-            <Text style={styles.buttonText}>Eliminar</Text>
+            <Text style={[
+              styles.categoryText,
+              !category && styles.categoryPlaceholder
+            ]}>
+              {category ? 
+                categories.find(cat => cat.id === category)?.name : 
+                'Seleccionar categoría'
+              }
+            </Text>
+            <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
           </TouchableOpacity>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Precio"
+            value={price}
+            onChangeText={setPrice}
+            keyboardType="decimal-pad"
+          />
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Stock"
+            value={stock}
+            onChangeText={setStock}
+            keyboardType="numeric"
+          />
+          
+          <TouchableOpacity
+            style={styles.dateSelector}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={[
+              styles.dateText,
+              !expiryDate && styles.datePlaceholder
+            ]}>
+              {expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha de vencimiento (opcional)'}
+            </Text>
+            <Ionicons name="calendar" size={24} color={colors.text.secondary} />
+          </TouchableOpacity>
+          
+          {showDatePicker && (
+            <DateTimePicker
+              value={expiryDate || new Date()}
+              mode="date"
+              display="default"
+              onChange={onChangeDate}
+              minimumDate={new Date()}
+            />
+          )}
+          
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={[styles.updateButton, saving && styles.disabledButton]} 
+              onPress={handleUpdateProduct}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Actualizar</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.deleteButton, saving && styles.disabledButton]} 
+              onPress={handleDeleteProduct}
+              disabled={saving}
+            >
+              <Text style={styles.buttonText}>Eliminar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+        
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={colors.text.primary} />
+          <Text style={styles.backButtonText}>Volver</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <CategoryModal />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -266,30 +319,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollContainer: {
+  scrollContent: {
     padding: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 30,
-    textAlign: 'center',
-    color: colors.text.primary,
+  formContainer: {
+    // Add any necessary styles for the form container
   },
   label: {
     fontSize: 14,
     color: colors.text.secondary,
     marginBottom: 5,
-  },
-  barcode: {
-    fontSize: 16,
-    color: colors.text.primary,
-    marginBottom: 20,
-    padding: 15,
-    backgroundColor: colors.surface,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   input: {
     width: '100%',
@@ -420,5 +459,19 @@ const styles = StyleSheet.create({
   },
   datePlaceholder: {
     color: colors.text.secondary,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: colors.background,
+    borderRadius: 5,
+    marginTop: 20,
+  },
+  backButtonText: {
+    color: colors.text.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
   },
 }); 

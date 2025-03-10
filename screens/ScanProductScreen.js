@@ -13,8 +13,10 @@ import {
 import { Camera, CameraView } from 'expo-camera';
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, increment, Timestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
 
-export default function ScanProductScreen({ navigation }) {
+export default function ScanProductScreen({ navigation, route }) {
   const [hasPermission, setHasPermission] = useState(null);
   const [scanning, setScanning] = useState(true);
   const [cart, setCart] = useState([]);
@@ -23,6 +25,13 @@ export default function ScanProductScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [alertActive, setAlertActive] = useState(false);
+  const [lastScannedCode, setLastScannedCode] = useState('');
+  const [lastScannedTime, setLastScannedTime] = useState(0);
+  const [searchModalVisible, setSearchModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -40,59 +49,106 @@ export default function ScanProductScreen({ navigation }) {
     setTotal(sum);
   }, [cart]);
 
-  const handleBarCodeScanned = async ({ data }) => {
-    if (scanning) {
-      setScanning(false); // Detener el escaneo inmediatamente
+  useEffect(() => {
+    if (route.params?.selectedProduct) {
+      const product = route.params.selectedProduct;
+      setSelectedProduct(product);
+      setCurrentQuantity('1');
+      setModalVisible(true);
+    }
+  }, [route.params?.selectedProduct]);
+
+  const handleBarCodeScanned = ({ type, data }) => {
+    // Desactivar inmediatamente el escáner para evitar múltiples llamadas
+    setScanning(false);
+    setLoading(true);
+    
+    // Registrar el código escaneado
+    console.log(`Código escaneado único: ${data} (Tipo: ${type})`);
+    
+    // Procesar el código de barras
+    processBarcode(data);
+  };
+
+  const processBarcode = async (barcode) => {
+    try {
+      // Buscar el producto en la base de datos
+      const productsQuery = query(
+        collection(db, 'products'), 
+        where('barcode', '==', barcode),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const querySnapshot = await getDocs(productsQuery);
       
-      setLoading(true);
-      try {
-        // Buscar el producto en la base de datos
-        const q = query(
-          collection(db, 'products'), 
-          where('barcode', '==', data),
-          where('userId', '==', auth.currentUser.uid)
-        );
-        const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        // Marcar que hay una alerta activa
+        setAlertActive(true);
         
-        if (querySnapshot.empty) {
-          Alert.alert(
-            'Producto no encontrado',
-            '¿Desea agregar este producto?',
-            [
-              {
-                text: 'Cancelar',
-                onPress: () => setScanning(true),
-                style: 'cancel',
-              },
-              {
-                text: 'Agregar',
-                onPress: () => {
-                  navigation.navigate('AddProduct', { barcode: data });
-                },
-              },
-            ],
-            { cancelable: false }
-          );
-        } else {
-          // Producto encontrado, agregarlo al carrito
-          const productData = querySnapshot.docs[0].data();
-          const product = {
-            id: querySnapshot.docs[0].id,
-            ...productData
-          };
-          
-          // Mostrar modal para seleccionar cantidad
-          setSelectedProduct(product);
-          setCurrentQuantity('1');
-          setModalVisible(true);
+        // Reactivar el escáner después de 1 segundo
+        setTimeout(() => {
+          setLoading(false);
+          setScanning(true);
+          setAlertActive(false);
+        }, 1000);
+      } else {
+        // Producto encontrado, añadir directamente al carrito con cantidad 1
+        const productData = querySnapshot.docs[0].data();
+        const product = {
+          id: querySnapshot.docs[0].id,
+          ...productData
+        };
+        
+        // Verificar si hay suficiente stock
+        if (product.stock <= 0) {
+          setLoading(false);
+          setScanning(true);
+          return;
         }
-      } catch (error) {
-        console.error('Error al buscar producto:', error);
-        Alert.alert('Error', 'No se pudo buscar el producto');
-        setScanning(true);
-      } finally {
+        
+        // Verificar si el producto ya está en el carrito
+        const existingItemIndex = cart.findIndex(item => item.id === product.id);
+        
+        if (existingItemIndex !== -1) {
+          // Actualizar cantidad si ya existe
+          const updatedCart = [...cart];
+          const newQuantity = updatedCart[existingItemIndex].quantity + 1;
+          
+          if (newQuantity > product.stock) {
+            setLoading(false);
+            setScanning(true);
+            return;
+          }
+          
+          updatedCart[existingItemIndex].quantity = newQuantity;
+          setCart(updatedCart);
+        } else {
+          // Agregar nuevo item al carrito
+          setCart([...cart, {
+            id: product.id,
+            barcode: product.barcode,
+            name: product.name,
+            price: product.price,
+            quantity: 1,
+            stock: product.stock
+          }]);
+        }
+        
+        // Reactivar el escáner sin mostrar confirmación y sin cambiar a vista de carrito
         setLoading(false);
+        setScanning(true);
       }
+    } catch (error) {
+      console.error('Error al buscar producto:', error);
+      
+      // Marcar que hay una alerta activa
+      setAlertActive(true);
+      
+      // Reactivar el escáner después de mostrar el error
+      setTimeout(() => {
+        setLoading(false);
+        setScanning(true);
+        setAlertActive(false);
+      }, 1000);
     }
   };
 
@@ -136,6 +192,7 @@ export default function ScanProductScreen({ navigation }) {
       }]);
     }
     
+    // Cerrar el modal y reactivar el escáner inmediatamente
     setModalVisible(false);
     setScanning(true);
   };
@@ -163,57 +220,65 @@ export default function ScanProductScreen({ navigation }) {
     setCart(updatedCart);
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     if (cart.length === 0) {
-      Alert.alert('Error', 'El carrito está vacío');
+      Alert.alert('Carrito vacío', 'Agrega productos para continuar');
       return;
     }
     
-    setLoading(true);
-    try {
-      // Crear registro de venta con el ID del usuario
-      const sale = {
-        items: cart.map(item => ({
-          productId: item.id,
-          barcode: item.barcode,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          subtotal: item.price * item.quantity
-        })),
-        total: total,
-        date: Timestamp.now(),
-        userId: auth.currentUser.uid // Asociar la venta con el usuario
-      };
-      
-      const saleRef = await addDoc(collection(db, 'sales'), sale);
-      
-      // Actualizar stock de productos
-      for (const item of cart) {
-        await updateDoc(doc(db, 'products', item.id), {
-          stock: increment(-item.quantity)
-        });
-      }
-      
-      Alert.alert(
-        'Venta Completada', 
-        `Venta registrada con éxito. Total: $${total.toFixed(2)}`,
-        [{ text: 'OK', onPress: () => {
-          setCart([]);
-          setScanning(true);
-        }}]
-      );
-    } catch (error) {
-      console.error('Error al procesar venta:', error);
-      Alert.alert('Error', 'No se pudo completar la venta');
-    } finally {
-      setLoading(false);
+    // Navegar a la pantalla de carrito con los productos
+    navigation.navigate('NewCart', { cartItems: cart });
+  };
+
+  const searchProducts = async (searchText) => {
+    if (!searchText.trim()) {
+      setSearchResults([]);
+      return;
     }
+    
+    setSearchLoading(true);
+    try {
+      const productsQuery = query(
+        collection(db, 'products'),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const querySnapshot = await getDocs(productsQuery);
+      const products = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Filtrar por nombre o código de barras
+      const filtered = products.filter(product => 
+        product.name.toLowerCase().includes(searchText.toLowerCase()) ||
+        product.barcode.includes(searchText)
+      );
+      
+      setSearchResults(filtered);
+    } catch (error) {
+      console.error('Error al buscar productos:', error);
+      Alert.alert('Error', 'No se pudo buscar productos');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const adjustQuantity = (increment) => {
+    const currentQty = parseInt(currentQuantity) || 0;
+    const newQty = increment ? currentQty + 1 : Math.max(1, currentQty - 1);
+    
+    // Validar que no exceda el stock disponible
+    if (increment && newQty > selectedProduct.stock) {
+      Alert.alert('Error', `Solo hay ${selectedProduct.stock} unidades disponibles`);
+      return;
+    }
+    
+    setCurrentQuantity(newQty.toString());
   };
 
   if (hasPermission === null) {
     return (
-      <View style={styles.centered}>
+      <View style={styles.cameraPermissionContainer}>
         <Text>Solicitando permiso de cámara...</Text>
       </View>
     );
@@ -221,16 +286,13 @@ export default function ScanProductScreen({ navigation }) {
 
   if (hasPermission === false) {
     return (
-      <View style={styles.centered}>
-        <Text>No se ha concedido acceso a la cámara</Text>
+      <View style={styles.cameraPermissionContainer}>
+        <Text>No hay acceso a la cámara</Text>
         <TouchableOpacity 
           style={styles.permissionButton}
-          onPress={async () => {
-            const { status } = await Camera.requestCameraPermissionsAsync();
-            setHasPermission(status === 'granted');
-          }}
+          onPress={() => navigation.goBack()}
         >
-          <Text style={styles.permissionButtonText}>Solicitar Permiso</Text>
+          <Text style={styles.permissionButtonText}>Volver</Text>
         </TouchableOpacity>
       </View>
     );
@@ -238,160 +300,284 @@ export default function ScanProductScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {scanning ? (
-        <View style={styles.scannerContainer}>
-          <CameraView
-            style={styles.camera}
-            onBarcodeScanned={loading ? undefined : handleBarCodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: [
-                'ean13', 'ean8', 
-                'upc_a', 'upc_e', 
-                'code39', 'code128', 
-                'code93', 'pdf417'
-              ],
-            }}
-            cameraType="back"
+      {hasPermission === null ? (
+        <View style={styles.cameraPermissionContainer}>
+          <Text>Solicitando permiso de cámara...</Text>
+        </View>
+      ) : hasPermission === false ? (
+        <View style={styles.cameraPermissionContainer}>
+          <Text>No hay acceso a la cámara</Text>
+          <TouchableOpacity 
+            style={styles.permissionButton}
+            onPress={() => navigation.goBack()}
           >
-            <View style={styles.overlay}>
-              <Text style={styles.scanText}>Escanea el código de barras</Text>
-              <View style={styles.scanArea}>
-                <View style={styles.scanLine}></View>
-              </View>
-              {loading && (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#fff" />
-                </View>
-              )}
-              {cart.length > 0 && (
-                <TouchableOpacity 
-                  style={styles.viewCartButton}
-                  onPress={() => setScanning(false)}
-                >
-                  <Text style={styles.viewCartButtonText}>
-                    Ver Carrito ({cart.length})
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </CameraView>
+            <Text style={styles.permissionButtonText}>Volver</Text>
+          </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.cartContainer}>
-          <Text style={styles.cartTitle}>Carrito de Compras</Text>
-          
-          <FlatList
-            data={cart}
-            keyExtractor={(item, index) => index.toString()}
-            renderItem={({ item, index }) => (
-              <View style={styles.cartItem}>
-                <View style={styles.cartItemInfo}>
-                  <Text style={styles.cartItemName}>{item.name}</Text>
-                  <Text style={styles.cartItemPrice}>
-                    ${item.price.toFixed(2)} x 
-                    <TextInput
-                      style={styles.quantityInput}
-                      value={item.quantity.toString()}
-                      onChangeText={(text) => updateItemQuantity(index, parseInt(text))}
-                      keyboardType="numeric"
-                    />
-                    = ${(item.price * item.quantity).toFixed(2)}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => removeFromCart(index)}
-                >
-                  <Text style={styles.removeButtonText}>X</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyCart}>
-                <Text style={styles.emptyCartText}>El carrito está vacío</Text>
-              </View>
-            }
-          />
-          
-          <View style={styles.totalContainer}>
-            <Text style={styles.totalText}>Total: ${total.toFixed(2)}</Text>
-          </View>
-          
-          <View style={styles.cartActions}>
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.scanMoreButton]}
-              onPress={() => setScanning(true)}
-            >
-              <Text style={styles.actionButtonText}>Escanear Más</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.checkoutButton]}
-              onPress={handleCheckout}
-              disabled={cart.length === 0 || loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.actionButtonText}>Finalizar Venta</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-      
-      {/* Modal para seleccionar cantidad */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            {selectedProduct && (
-              <>
-                <Text style={styles.modalTitle}>{selectedProduct.name}</Text>
-                <Text style={styles.modalPrice}>
-                  Precio: ${selectedProduct.price.toFixed(2)}
-                </Text>
-                <Text style={styles.modalStock}>
-                  Stock disponible: {selectedProduct.stock}
-                </Text>
-                
-                <View style={styles.quantityContainer}>
-                  <Text style={styles.quantityLabel}>Cantidad:</Text>
-                  <TextInput
-                    style={styles.modalQuantityInput}
-                    value={currentQuantity}
-                    onChangeText={setCurrentQuantity}
-                    keyboardType="numeric"
-                  />
-                </View>
-                
-                <View style={styles.modalActions}>
+        <>
+          {scanning ? (
+            <View style={styles.scanContainer}>
+              <CameraView
+                style={styles.camera}
+                onBarcodeScanned={scanning && !loading && !alertActive ? handleBarCodeScanned : undefined}
+                barcodeScannerSettings={{
+                  barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
+                  interval: 3000, // Aumentar el intervalo para reducir la frecuencia de escaneo
+                }}
+                cameraType="back"
+                flashMode="auto"
+              >
+                <View style={styles.overlay}>
+                  <Text style={styles.scanText}>Escanea el código de barras</Text>
+                  <View style={styles.scanArea}>
+                    <View style={styles.scanLine}></View>
+                  </View>
+                  {loading && (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="large" color="#fff" />
+                    </View>
+                  )}
+                  
+                  {/* Botón de búsqueda por nombre */}
                   <TouchableOpacity 
-                    style={[styles.modalButton, styles.cancelButton]}
-                    onPress={() => {
-                      setModalVisible(false);
-                      setScanning(true);
-                    }}
+                    style={styles.searchButton}
+                    onPress={() => setSearchModalVisible(true)}
                   >
-                    <Text style={styles.modalButtonText}>Cancelar</Text>
+                    <Text style={styles.searchButtonText}>
+                      Buscar por Nombre
+                    </Text>
                   </TouchableOpacity>
                   
-                  <TouchableOpacity 
-                    style={[styles.modalButton, styles.addButton]}
-                    onPress={addToCart}
-                  >
-                    <Text style={styles.modalButtonText}>Agregar</Text>
-                  </TouchableOpacity>
+                  {/* Mostrar contador de productos en carrito */}
+                  {cart.length > 0 && (
+                    <TouchableOpacity 
+                      style={styles.viewCartButton}
+                      onPress={() => setScanning(false)}
+                    >
+                      <Text style={styles.viewCartButtonText}>
+                        Ver Carrito ({cart.length})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+              </CameraView>
+            </View>
+          ) : (
+            <View style={styles.cartContainer}>
+              <Text style={styles.cartTitle}>Carrito de Compras</Text>
+              
+              <FlatList
+                data={cart}
+                keyExtractor={(item, index) => index.toString()}
+                renderItem={({ item, index }) => (
+                  <View style={styles.cartItem}>
+                    <View style={styles.cartItemInfo}>
+                      <Text style={styles.cartItemName}>{item.name}</Text>
+                      <Text style={styles.cartItemPrice}>${item.price.toFixed(2)} x {item.quantity} = ${(item.price * item.quantity).toFixed(2)}</Text>
+                    </View>
+                    
+                    <View style={styles.cartItemActions}>
+                      <TouchableOpacity 
+                        style={styles.quantityButton}
+                        onPress={() => {
+                          // Decrementar cantidad
+                          if (item.quantity > 1) {
+                            const updatedCart = [...cart];
+                            updatedCart[index].quantity -= 1;
+                            setCart(updatedCart);
+                          }
+                        }}
+                      >
+                        <Text style={styles.quantityButtonText}>-</Text>
+                      </TouchableOpacity>
+                      
+                      <TextInput
+                        style={styles.quantityInput}
+                        value={item.quantity.toString()}
+                        onChangeText={(text) => {
+                          const newQuantity = parseInt(text) || 0;
+                          if (newQuantity > 0 && newQuantity <= item.stock) {
+                            const updatedCart = [...cart];
+                            updatedCart[index].quantity = newQuantity;
+                            setCart(updatedCart);
+                          }
+                        }}
+                        keyboardType="numeric"
+                      />
+                      
+                      <TouchableOpacity 
+                        style={styles.quantityButton}
+                        onPress={() => {
+                          // Incrementar cantidad
+                          if (item.quantity < item.stock) {
+                            const updatedCart = [...cart];
+                            updatedCart[index].quantity += 1;
+                            setCart(updatedCart);
+                          }
+                        }}
+                      >
+                        <Text style={styles.quantityButtonText}>+</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity 
+                        style={styles.removeButton}
+                        onPress={() => {
+                          const updatedCart = cart.filter((_, i) => i !== index);
+                          setCart(updatedCart);
+                        }}
+                      >
+                        <Text style={styles.removeButtonText}>X</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.emptyCart}>
+                    <Text style={styles.emptyCartText}>No hay productos en el carrito</Text>
+                  </View>
+                }
+              />
+              
+              <View style={styles.totalContainer}>
+                <Text style={styles.totalText}>Total: ${total.toFixed(2)}</Text>
+              </View>
+              
+              <View style={styles.cartActions}>
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.scanMoreButton]}
+                  onPress={() => setScanning(true)}
+                >
+                  <Text style={styles.actionButtonText}>Escanear Más</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.checkoutButton]}
+                  onPress={handleCheckout}
+                >
+                  <Text style={styles.actionButtonText}>Finalizar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          
+          {/* Modal de búsqueda */}
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={searchModalVisible}
+            onRequestClose={() => setSearchModalVisible(false)}
+          >
+            <View style={styles.modalContainer}>
+              <View style={styles.searchModalContent}>
+                <Text style={styles.modalTitle}>Buscar Producto</Text>
+                
+                <View style={styles.searchInputContainer}>
+                  <Ionicons name="search" size={20} color="#666" style={{marginRight: 10}} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Nombre o código de barras"
+                    value={searchQuery}
+                    onChangeText={(text) => {
+                      setSearchQuery(text);
+                      // Buscar automáticamente mientras se escribe
+                      if (text.length > 2) { // Buscar después de 2 caracteres
+                        searchProducts(text);
+                      } else if (text.length === 0) {
+                        setSearchResults([]);
+                      }
+                    }}
+                    autoFocus={true}
+                    returnKeyType="search"
+                    onSubmitEditing={() => searchProducts(searchQuery)}
+                  />
+                  {searchQuery !== '' && (
+                    <TouchableOpacity 
+                      style={styles.clearButton}
+                      onPress={() => {
+                        setSearchQuery('');
+                        setSearchResults([]);
+                      }}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#666" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                
+                {searchLoading ? (
+                  <ActivityIndicator size="large" color={colors.primary} style={{marginTop: 20}} />
+                ) : (
+                  <FlatList
+                    data={searchResults}
+                    keyExtractor={item => item.id}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity 
+                        style={styles.searchResultItem}
+                        onPress={() => {
+                          // Verificar si hay suficiente stock
+                          if (item.stock <= 0) {
+                            return; // No mostrar alerta, simplemente no hacer nada
+                          }
+                          
+                          // Verificar si el producto ya está en el carrito
+                          const existingItemIndex = cart.findIndex(cartItem => cartItem.id === item.id);
+                          
+                          if (existingItemIndex !== -1) {
+                            // Actualizar cantidad si ya existe
+                            const updatedCart = [...cart];
+                            const newQuantity = updatedCart[existingItemIndex].quantity + 1;
+                            
+                            if (newQuantity > item.stock) {
+                              return; // No mostrar alerta, simplemente no hacer nada
+                            }
+                            
+                            updatedCart[existingItemIndex].quantity = newQuantity;
+                            setCart(updatedCart);
+                          } else {
+                            // Agregar nuevo item al carrito
+                            setCart([...cart, {
+                              id: item.id,
+                              barcode: item.barcode,
+                              name: item.name,
+                              price: item.price,
+                              quantity: 1,
+                              stock: item.stock
+                            }]);
+                          }
+                          
+                          // Cerrar el modal de búsqueda inmediatamente sin mostrar confirmación
+                          setSearchModalVisible(false);
+                          setSearchQuery('');
+                          setSearchResults([]);
+                        }}
+                      >
+                        <Text style={styles.searchResultName}>{item.name}</Text>
+                        <Text style={styles.searchResultPrice}>Precio: ${item.price.toFixed(2)}</Text>
+                        <Text style={styles.searchResultStock}>Stock: {item.stock}</Text>
+                      </TouchableOpacity>
+                    )}
+                    ListEmptyComponent={
+                      searchQuery.length > 2 ? (
+                        <Text style={styles.noResultsText}>No se encontraron productos</Text>
+                      ) : searchQuery.length > 0 ? (
+                        <Text style={styles.noResultsText}>Escribe al menos 3 caracteres</Text>
+                      ) : null
+                    }
+                    style={{maxHeight: 300}}
+                  />
+                )}
+                
+                <TouchableOpacity
+                  style={styles.closeModalButton}
+                  onPress={() => setSearchModalVisible(false)}
+                >
+                  <Text style={styles.closeModalButtonText}>Cerrar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        </>
+      )}
     </View>
   );
 }
@@ -401,7 +587,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  centered: {
+  cameraPermissionContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -417,7 +603,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-  scannerContainer: {
+  scanContainer: {
     flex: 1,
   },
   camera: {
@@ -478,17 +664,15 @@ const styles = StyleSheet.create({
   },
   cartItem: {
     backgroundColor: 'white',
-    borderRadius: 10,
     padding: 15,
+    borderRadius: 10,
     marginBottom: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#ddd',
   },
   cartItemInfo: {
     flex: 1,
+    marginBottom: 10,
   },
   cartItemName: {
     fontSize: 16,
@@ -499,12 +683,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
+  cartItemActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  quantityButton: {
+    backgroundColor: '#6c757d',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
   quantityInput: {
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 3,
     paddingHorizontal: 5,
-    marginHorizontal: 5,
     width: 40,
     textAlign: 'center',
   },
@@ -515,6 +712,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 10,
   },
   removeButtonText: {
     color: 'white',
@@ -570,66 +768,91 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  modalContent: {
+  searchModalContent: {
     backgroundColor: 'white',
     borderRadius: 10,
     padding: 20,
-    width: '80%',
+    width: '90%',
+    maxHeight: '80%',
     elevation: 5,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 5,
+    paddingHorizontal: 10,
+    marginVertical: 15,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    fontSize: 16,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    marginBottom: 10,
     textAlign: 'center',
+    marginBottom: 10,
   },
-  modalPrice: {
+  searchResultItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+  },
+  searchResultName: {
     fontSize: 16,
+    fontWeight: 'bold',
     marginBottom: 5,
   },
-  modalStock: {
-    fontSize: 16,
-    marginBottom: 15,
+  searchResultPrice: {
+    fontSize: 14,
     color: '#666',
   },
-  quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
+  searchResultStock: {
+    fontSize: 14,
+    color: '#666',
   },
-  quantityLabel: {
+  noResultsText: {
     fontSize: 16,
-    marginRight: 10,
-  },
-  modalQuantityInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    width: 60,
+    color: '#666',
     textAlign: 'center',
+    marginTop: 20,
   },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalButton: {
-    flex: 1,
+  closeModalButton: {
+    backgroundColor: '#dc3545',
     padding: 10,
     borderRadius: 5,
-    justifyContent: 'center',
     alignItems: 'center',
   },
-  cancelButton: {
-    backgroundColor: '#dc3545',
-    marginRight: 10,
-  },
-  addButton: {
-    backgroundColor: '#28a745',
-  },
-  modalButtonText: {
+  closeModalButtonText: {
     color: 'white',
     fontWeight: 'bold',
+  },
+  quantityButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  clearButton: {
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  searchButton: {
+    backgroundColor: '#6c757d',
+    padding: 15,
+    borderRadius: 5,
+    marginTop: 20,
+    marginBottom: 10,
+    width: '80%',
+    alignItems: 'center',
+  },
+  searchButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });

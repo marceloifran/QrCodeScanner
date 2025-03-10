@@ -1,87 +1,147 @@
 import React, { useState } from 'react';
 import { 
   StyleSheet, 
-  Text, 
   View, 
+  Text, 
   TextInput, 
   TouchableOpacity, 
-  Alert,
+  Image,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ScrollView,
+  StatusBar,
+  Alert
 } from 'react-native';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase/config';
+import { colors } from '../theme/colors';
+// Comentar esta importación si sigue dando problemas
+// import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-
+  const [showPassword, setShowPassword] = useState(false);
+  
   const handleLogin = async () => {
-    if (email === '' || password === '') {
-      Alert.alert('Error', 'Por favor ingresa email y contraseña');
+    if (!email || !password) {
+      Alert.alert('Error', 'Por favor ingresa tu email y contraseña');
       return;
     }
-
+    
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // El navegador redirigirá automáticamente si el usuario está autenticado
     } catch (error) {
       let errorMessage = 'Error al iniciar sesión';
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        errorMessage = 'Email o contraseña incorrectos';
+      
+      switch (error.code) {
+        case 'auth/invalid-email':
+          errorMessage = 'El email ingresado no es válido';
+          break;
+        case 'auth/user-disabled':
+          errorMessage = 'Esta cuenta ha sido deshabilitada';
+          break;
+        case 'auth/user-not-found':
+          errorMessage = 'No existe una cuenta con este email';
+          break;
+        case 'auth/wrong-password':
+          errorMessage = 'Contraseña incorrecta';
+          break;
       }
+      
       Alert.alert('Error', errorMessage);
+    } finally {
       setLoading(false);
     }
   };
-
+  
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.formContainer}>
-        <Text style={styles.title}>Sistema de Inventario</Text>
+      <StatusBar barStyle="light-content" />
+      
+      <View style={[styles.background, { backgroundColor: '#28a745' }]} />
+      
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('../assets/icon.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={styles.appName}>MiniMarket</Text>
+          <Text style={styles.tagline}>Gestión de inventario simple y eficiente</Text>
+        </View>
         
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
+        <View style={styles.formContainer}>
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#999"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+          
+          <View style={styles.inputContainer}>
+            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Contraseña"
+              placeholderTextColor="#999"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity 
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              <Ionicons 
+                name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                size={20} 
+                color="#666" 
+              />
+            </TouchableOpacity>
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="white" />
+            ) : (
+              <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.forgotPassword}
+            onPress={() => navigation.navigate('SignUp')}
+          >
+            <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
+          </TouchableOpacity>
+        </View>
         
-        <TextInput
-          style={styles.input}
-          placeholder="Contraseña"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
-        
-        <TouchableOpacity 
-          style={styles.loginButton} 
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.loginButtonText}>Iniciar Sesión</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.signUpLink}
-          onPress={() => navigation.navigate('SignUp')}
-        >
-          <Text style={styles.signUpLinkText}>¿No tienes cuenta? Regístrate</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>¿No tienes una cuenta?</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+            <Text style={styles.signUpText}>Regístrate</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -89,35 +149,72 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
-  formContainer: {
-    flex: 1,
+  background: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '100%',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
     padding: 20,
   },
-  title: {
-    fontSize: 24,
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: 10,
+  },
+  appName: {
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 30,
-    color: '#333',
+    color: 'white',
+    marginBottom: 5,
+  },
+  tagline: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+  },
+  formContainer: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+    marginBottom: 20,
+  },
+  inputIcon: {
+    marginRight: 10,
   },
   input: {
-    width: '100%',
+    flex: 1,
     height: 50,
-    backgroundColor: 'white',
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    color: '#333',
+    fontSize: 16,
+  },
+  passwordToggle: {
+    padding: 10,
   },
   loginButton: {
-    width: '100%',
+    backgroundColor: '#28a745',
+    borderRadius: 10,
     height: 50,
-    backgroundColor: '#007bff',
-    borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,
@@ -127,11 +224,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
   },
-  signUpLink: {
-    marginTop: 20,
+  forgotPassword: {
+    alignItems: 'center',
+    marginTop: 15,
   },
-  signUpLinkText: {
+  forgotPasswordText: {
     color: '#28a745',
-    fontSize: 16,
+    fontSize: 14,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 30,
+  },
+  footerText: {
+    color: 'white',
+    marginRight: 5,
+  },
+  signUpText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
 }); 
