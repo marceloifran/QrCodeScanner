@@ -118,25 +118,45 @@ export default function SalesHistoryScreen({ navigation }) {
     const productMap = {};
     
     salesData.forEach(sale => {
-      if (!sale.items) return;
+      if (!sale.items || !Array.isArray(sale.items)) {
+        console.log('Venta sin items o items no es array:', sale.id);
+        return;
+      }
       
       sale.items.forEach(item => {
-        if (!productMap[item.id]) {
-          productMap[item.id] = {
-            id: item.id,
-            name: item.name,
+        if (!item) {
+          console.log('Item nulo en venta:', sale.id);
+          return;
+        }
+        
+        const productId = item.id || 'unknown';
+        const productName = item.name || 'Producto desconocido';
+        
+        if (!productMap[productId]) {
+          productMap[productId] = {
+            id: productId,
+            name: productName,
             quantity: 0,
             revenue: 0
           };
         }
-        productMap[item.id].quantity += item.quantity || 1;
-        productMap[item.id].revenue += (item.price || 0) * (item.quantity || 1);
+        
+        // Asegurarse de que quantity y price sean números
+        const quantity = parseInt(item.quantity) || 1;
+        const price = parseFloat(item.price) || 0;
+        
+        productMap[productId].quantity += quantity;
+        productMap[productId].revenue += price * quantity;
+        
+       
       });
     });
     
-    // Convertir a array y ordenar por cantidad
+    // Convertir a array y ordenar por cantidad vendida (de mayor a menor)
     const productsArray = Object.values(productMap);
     productsArray.sort((a, b) => b.quantity - a.quantity);
+    
+    // Imprimir para depuración
     
     setProductStats(productsArray);
   };
@@ -150,7 +170,7 @@ export default function SalesHistoryScreen({ navigation }) {
       if (!sale.items) return;
       
       sale.items.forEach(item => {
-        // Usar 'Sin categoría' si no hay categoría
+        // Usar la categoría del producto o 'Sin categoría' si no existe
         const category = item.category || 'Sin categoría';
         
         if (!categoryMap[category]) {
@@ -170,13 +190,10 @@ export default function SalesHistoryScreen({ navigation }) {
       });
     });
     
-    // Convertir a array y ordenar por ingresos
+    // Convertir a array y ordenar por ingresos (de mayor a menor)
     const categoriesArray = Object.values(categoryMap);
     categoriesArray.sort((a, b) => b.revenue - a.revenue);
     
-    // Imprimir para depuración
-    console.log('Categorías encontradas:', categoriesArray.length);
-    console.log('Categorías:', categoriesArray.map(c => c.name));
     
     setCategoryStats(categoriesArray);
   };
@@ -253,24 +270,24 @@ export default function SalesHistoryScreen({ navigation }) {
   );
 
   const renderTabs = () => (
-    <View style={styles.tabContainer}>
+    <View style={styles.tabsContainer}>
       <TouchableOpacity
         style={[styles.tabButton, activeTab === 'history' && styles.tabButtonActive]}
         onPress={() => setActiveTab('history')}
       >
-        <Ionicons name="receipt-outline" size={18} color={activeTab === 'history' ? colors.primary : colors.text.secondary} />
+        <Ionicons name="time-outline" size={20} color={activeTab === 'history' ? colors.primary : colors.text.secondary} />
         <Text style={[styles.tabButtonText, activeTab === 'history' && styles.tabButtonTextActive]}>
           Historial
         </Text>
       </TouchableOpacity>
       
       <TouchableOpacity
-        style={[styles.tabButton, activeTab === 'analytics' && styles.tabButtonActive]}
-        onPress={() => setActiveTab('analytics')}
+        style={[styles.tabButton, activeTab === 'products' && styles.tabButtonActive]}
+        onPress={() => setActiveTab('products')}
       >
-        <Ionicons name="bar-chart" size={18} color={activeTab === 'analytics' ? colors.primary : colors.text.secondary} />
-        <Text style={[styles.tabButtonText, activeTab === 'analytics' && styles.tabButtonTextActive]}>
-          Análisis
+        <Ionicons name="cube-outline" size={20} color={activeTab === 'products' ? colors.primary : colors.text.secondary} />
+        <Text style={[styles.tabButtonText, activeTab === 'products' && styles.tabButtonTextActive]}>
+          Productos
         </Text>
       </TouchableOpacity>
     </View>
@@ -396,41 +413,51 @@ export default function SalesHistoryScreen({ navigation }) {
 
   const renderProductsTab = () => (
     <View style={styles.tabContent}>
-      <Text style={styles.sectionTitle}>Productos más vendidos</Text>
+      <Text style={styles.sectionTitle}>Top 10 Productos más vendidos</Text>
       
       {productStats.length > 0 ? (
         <FlatList
-          data={productStats.slice(0, 10)} // Top 10
-          keyExtractor={(item) => item.id}
-          renderItem={({ item, index }) => (
-            <View style={styles.statCard}>
-              <View style={styles.statRank}>
-                <Text style={styles.statRankText}>{index + 1}</Text>
-              </View>
-              
-              <View style={styles.statInfo}>
-                <Text style={styles.statName}>{item.name}</Text>
+          data={productStats.slice(0, 10)} // Mostrar solo los 10 primeros productos
+          keyExtractor={(item, index) => `${item.id}-${index}`}
+          renderItem={({ item, index }) => {
+            // Calcular el porcentaje del total
+            const totalQuantity = productStats.reduce((sum, prod) => sum + prod.quantity, 0);
+            const percentage = totalQuantity > 0 ? Math.round((item.quantity / totalQuantity) * 100) : 0;
+            
+            return (
+              <View style={styles.statCard}>
+                <View style={styles.statRank}>
+                  <Text style={styles.statRankText}>{index + 1}</Text>
+                </View>
                 
-                <View style={styles.statDetails}>
-                  <View style={styles.statDetail}>
-                    <Ionicons name="cart-outline" size={14} color={colors.text.secondary} />
-                    <Text style={styles.statDetailText}>{item.quantity} unidades</Text>
-                  </View>
+                <View style={styles.statInfo}>
+                  <Text style={styles.statName}>{item.name}</Text>
                   
-                  <View style={styles.statDetail}>
-                    <Ionicons name="cash-outline" size={14} color={colors.text.secondary} />
-                    <Text style={styles.statDetailText}>${formatPrice(item.revenue, 0)}</Text>
+                  <View style={styles.statDetails}>
+                    <View style={styles.statDetail}>
+                      <Ionicons name="cart-outline" size={14} color={colors.text.secondary} />
+                      <Text style={styles.statDetailText}>{item.quantity} unidades</Text>
+                    </View>
+                    
+                    <View style={styles.statDetail}>
+                      <Ionicons name="cash-outline" size={14} color={colors.text.secondary} />
+                      <Text style={styles.statDetailText}>${formatPrice(item.revenue, 0)}</Text>
+                    </View>
                   </View>
                 </View>
+                
+                <View style={styles.statPercentage}>
+                  <Text style={styles.statPercentageText}>{percentage}%</Text>
+                </View>
               </View>
-            </View>
-          )}
+            );
+          }}
           contentContainerStyle={styles.listContainer}
         />
       ) : (
         <View style={styles.emptyContainer}>
           <Ionicons name="cube-outline" size={50} color="#ccc" />
-          <Text style={styles.emptyText}>No hay datos de productos</Text>
+          <Text style={styles.emptyText}>No hay datos de productos vendidos</Text>
         </View>
       )}
     </View>
@@ -438,11 +465,11 @@ export default function SalesHistoryScreen({ navigation }) {
 
   const renderCategoriesTab = () => (
     <View style={styles.tabContent}>
-      <Text style={styles.sectionTitle}>Categorías más vendidas</Text>
+      <Text style={styles.sectionTitle}>Top 5 Categorías más vendidas</Text>
       
       {categoryStats.length > 0 ? (
         <FlatList
-          data={categoryStats}
+          data={categoryStats.slice(0, 5)} // Tomar solo las 5 primeras categorías
           keyExtractor={(item, index) => `${item.name}-${index}`}
           renderItem={({ item, index }) => {
             // Calcular el porcentaje del total
@@ -655,6 +682,19 @@ export default function SalesHistoryScreen({ navigation }) {
     return colors[index % colors.length];
   };
 
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'history':
+        return renderHistoryTab();
+      case 'products':
+        return renderProductsTab();
+      case 'analytics':
+        return renderAnalyticsTab();
+      default:
+        return renderHistoryTab();
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -666,52 +706,41 @@ export default function SalesHistoryScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Filtros de tiempo */}
-      {renderFilterButtons()}
-      
-      {/* Pestañas */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'history' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('history')}
-        >
-          <Ionicons 
-            name="list" 
-            size={18} 
-            color={activeTab === 'history' ? colors.primary : colors.text.secondary} 
+      <View style={styles.header}>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color={colors.text.secondary} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar ventas..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
-          <Text 
-            style={[
-              styles.tabButtonText, 
-              activeTab === 'history' && styles.tabButtonTextActive
-            ]}
-          >
-            Historial
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'analytics' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('analytics')}
-        >
-          <Ionicons 
-            name="bar-chart" 
-            size={18} 
-            color={activeTab === 'analytics' ? colors.primary : colors.text.secondary} 
-          />
-          <Text 
-            style={[
-              styles.tabButtonText, 
-              activeTab === 'analytics' && styles.tabButtonTextActive
-            ]}
-          >
-            Análisis
-          </Text>
-        </TouchableOpacity>
+        </View>
       </View>
       
-      {/* Contenido de la pestaña activa */}
-      {activeTab === 'history' ? renderHistoryTab() : renderAnalyticsTab()}
+      {renderFilterButtons()}
+      
+      <View style={styles.summaryCard}>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>Total Ventas</Text>
+          <Text style={styles.summaryValue}>{sales.length}</Text>
+        </View>
+        <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>Ingresos</Text>
+          <Text style={styles.summaryValue}>${formatPrice(totalAmount, 0)}</Text>
+        </View>
+      </View>
+      
+      {renderTabs()}
+      
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Cargando datos...</Text>
+        </View>
+      ) : (
+        renderContent()
+      )}
     </View>
   );
 }
@@ -720,6 +749,25 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  searchInput: {
+    flex: 1,
+    padding: 10,
   },
   filterContainer: {
     flexDirection: 'row',

@@ -11,7 +11,7 @@ import {
   Modal
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
-import { collection, query, where, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -40,6 +40,7 @@ export default function ScanProductScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [processingOrder, setProcessingOrder] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -71,7 +72,6 @@ export default function ScanProductScreen({ navigation, route }) {
   const handleBarCodeScanned = ({ type, data }) => {
     setScanning(false);
     setLoading(true);
-    console.log(`Código escaneado único: ${data} (Tipo: ${type})`);
     processBarcode(data);
   };
 
@@ -192,89 +192,13 @@ export default function ScanProductScreen({ navigation, route }) {
   // Finalizar venta o pasar a otra pantalla
   const handleCheckout = async () => {
     if (cart.length === 0) {
-      Alert.alert('Carrito vacío', 'Agrega productos para realizar una venta.');
+      Alert.alert('Carrito vacío', 'Agrega productos para continuar');
       return;
     }
     
-    // Prevenir múltiples envíos
-    if (loading) {
-      console.log('Procesamiento en curso, evitando duplicación');
-      return;
-    }
+    // Mostrar el modal de procesamiento
+    setProcessingOrder(true);
     
-    setLoading(true);
-    
-    try {
-      // Crear un ID único para esta venta basado en timestamp y usuario
-      const saleId = `${auth.currentUser.uid}_${Date.now()}`;
-      
-      // Calcular un hash único para esta venta basado en productos y cantidades
-      const cartHash = cart.map(item => `${item.id}_${item.quantity}_${item.price}`).sort().join('|');
-      const total = calculateTotal();
-      
-      // Verificar si ya existe una venta con características similares en los últimos 5 minutos
-      const fiveMinutesAgo = new Date();
-      fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
-      
-      const recentSalesQuery = query(
-        collection(db, 'sales'),
-        where('userId', '==', auth.currentUser.uid),
-        where('date', '>=', fiveMinutesAgo)
-      );
-      
-      const recentSalesSnapshot = await getDocs(recentSalesQuery);
-      const recentSales = recentSalesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Verificar si hay una venta similar (mismo total y mismos productos)
-      const isDuplicate = recentSales.some(sale => {
-        // Verificar si el total coincide
-        if (Math.abs(sale.total - total) > 0.01) return false;
-        
-        // Verificar si tienen la misma cantidad de productos
-        if (sale.items.length !== cart.length) return false;
-        
-        // Crear un hash para la venta existente
-        const saleHash = sale.items
-          .map(item => `${item.id}_${item.quantity}_${item.price}`)
-          .sort()
-          .join('|');
-        
-        // Comparar los hashes
-        return saleHash === cartHash;
-      });
-      
-      if (isDuplicate) {
-        Alert.alert(
-          'Venta Duplicada', 
-          'Esta venta parece ser idéntica a una realizada en los últimos 5 minutos. ¿Estás seguro de que quieres registrarla nuevamente?',
-          [
-            {
-              text: 'Cancelar',
-              style: 'cancel',
-              onPress: () => setLoading(false)
-            },
-            {
-              text: 'Registrar de todos modos',
-              onPress: () => processSale(saleId)
-            }
-          ]
-        );
-      } else {
-        // No es duplicado, procesar normalmente
-        processSale(saleId);
-      }
-    } catch (error) {
-      console.error('Error al verificar duplicados:', error);
-      setLoading(false);
-      Alert.alert('Error', 'No se pudo procesar la venta');
-    }
-  };
-
-  // Función para procesar la venta
-  const processSale = async (saleId) => {
     try {
       // Verificar stock antes de procesar
       for (const item of cart) {
@@ -284,7 +208,7 @@ export default function ScanProductScreen({ navigation, route }) {
         
         if (!productSnap.exists()) {
           Alert.alert('Error', `El producto ${item.name} ya no existe.`);
-          setLoading(false);
+          setProcessingOrder(false);
           return;
         }
         
@@ -292,7 +216,7 @@ export default function ScanProductScreen({ navigation, route }) {
         
         if (currentStock < item.quantity) {
           Alert.alert('Error', `Stock insuficiente para ${item.name}. Solo quedan ${currentStock} unidades.`);
-          setLoading(false);
+          setProcessingOrder(false);
           return;
         }
       }
@@ -306,17 +230,15 @@ export default function ScanProductScreen({ navigation, route }) {
           id: item.id,
           name: item.name,
           price: parseFloat(item.price),
-          quantity: parseInt(item.quantity)
+          quantity: parseInt(item.quantity),
+          category: item.category || 'Sin categoría' // Agregar categoría
         })),
         total: parseFloat(totalValue)
       };
       
-      console.log('Datos de venta a guardar:', saleData);
       
-      // Guardar la venta con el ID específico para evitar duplicados
-      const saleRef = doc(db, 'sales', saleId);
-      await setDoc(saleRef, saleData);
-      console.log('Venta guardada con ID:', saleRef.id);
+      // Guardar la venta
+      const saleRef = await addDoc(collection(db, 'sales'), saleData);
       
       // Actualizar el stock de cada producto
       const updatePromises = cart.map(async (item) => {
@@ -327,7 +249,6 @@ export default function ScanProductScreen({ navigation, route }) {
           const currentStock = productSnap.data().stock;
           const newStock = Math.max(0, currentStock - item.quantity);
           
-          console.log(`Actualizando stock de ${item.name}: ${currentStock} -> ${newStock}`);
           
           return updateDoc(productRef, {
             stock: newStock,
@@ -348,7 +269,8 @@ export default function ScanProductScreen({ navigation, route }) {
       console.error('Error al procesar la venta:', error);
       Alert.alert('Error', 'No se pudo completar la venta: ' + error.message);
     } finally {
-      setLoading(false);
+      // Ocultar el modal de procesamiento
+      setProcessingOrder(false);
     }
   };
 
@@ -665,6 +587,20 @@ export default function ScanProductScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+
+      {/* Modal de procesamiento */}
+      <Modal
+        visible={processingOrder}
+        transparent={true}
+        animationType="fade"
+      >
+        <View style={styles.processingModalContainer}>
+          <View style={styles.processingModalContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.processingModalText}>Procesando venta...</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -935,5 +871,24 @@ const styles = StyleSheet.create({
   closeModalButtonText: {
     color: 'white',
     fontWeight: 'bold',
+  },
+  processingModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  processingModalContent: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  processingModalText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 15,
   },
 });

@@ -227,7 +227,6 @@ export default function ProductListScreen({ navigation, route }) {
         date: doc.data().date ? doc.data().date.toDate() : new Date()
       }));
       
-      console.log(`Cargadas ${salesData.length} ventas para análisis`);
       
       // Inicializar mapa de categorías con todas las categorías predefinidas
       const categoryMap = {};
@@ -284,14 +283,9 @@ export default function ProductListScreen({ navigation, route }) {
           
           totalProcessedItems++;
           
-          // Log detallado para depuración
-          console.log(`Procesado item: ${item.name}, categoría: ${category}, cantidad: ${quantity}, precio: ${price}, ingreso: ${revenue}`);
+         
         });
       });
-      
-      console.log(`Total de items procesados: ${totalProcessedItems}`);
-      console.log('Categorías encontradas:', Object.keys(categoryMap));
-      console.log('Valores de categorías:', JSON.stringify(categoryMap, null, 2));
       
       setCategoryValues(categoryMap);
     } catch (error) {
@@ -301,11 +295,7 @@ export default function ProductListScreen({ navigation, route }) {
 
   // Agregar una función para depurar los datos de categorías
   const debugCategoryData = () => {
-    console.log('--- DEPURACIÓN DE DATOS DE CATEGORÍAS ---');
-    console.log('Categorías predefinidas:', predefinedCategories.map(c => c.id));
-    console.log('Conteo de productos por categoría:', categoryCounts);
-    console.log('Valores de categorías (ventas e ingresos):', categoryValues);
-    
+  
     // Verificar si hay categorías con ventas pero sin productos
     const categoriesWithSalesNoProducts = Object.keys(categoryValues).filter(catId => 
       categoryValues[catId].totalSales > 0 && (!categoryCounts[catId] || categoryCounts[catId] === 0)
@@ -421,9 +411,9 @@ export default function ProductListScreen({ navigation, route }) {
           </Text>
         </TouchableOpacity>
         
-        <TouchableOpacity
-          style={[
-            styles.categoryChip,
+          <TouchableOpacity 
+            style={[
+              styles.categoryChip,
             lowStockFilter && styles.categoryChipSelected,
             { backgroundColor: lowStockFilter ? '#FFA500' : colors.surface }
           ]}
@@ -440,8 +430,8 @@ export default function ProductListScreen({ navigation, route }) {
           >
             Stock Bajo ({products.filter(p => p.stock <= 5).length})
           </Text>
-        </TouchableOpacity>
-        
+          </TouchableOpacity>
+          
         {predefinedCategories.map(cat => {
           const count = categoryCounts[cat.id] || 0;
           if (count === 0) return null; // No mostrar categorías sin productos
@@ -449,7 +439,7 @@ export default function ProductListScreen({ navigation, route }) {
           const categoryValue = categoryValues[cat.id]?.totalRevenue || 0;
           
           return (
-            <TouchableOpacity
+            <TouchableOpacity 
               key={cat.id}
               style={[
                 styles.categoryChip,
@@ -463,7 +453,7 @@ export default function ProductListScreen({ navigation, route }) {
             >
               <Text
                 style={[
-                  styles.categoryChipText,
+                styles.categoryChipText,
                   selectedCategory === cat.id && styles.categoryChipTextSelected
                 ]}
               >
@@ -482,7 +472,7 @@ export default function ProductListScreen({ navigation, route }) {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+        </ScrollView>
       
       {(selectedCategory || lowStockFilter || searchQuery) && (
         <TouchableOpacity
@@ -493,8 +483,8 @@ export default function ProductListScreen({ navigation, route }) {
           <Text style={styles.clearFiltersText}>Limpiar filtros</Text>
         </TouchableOpacity>
       )}
-    </View>
-  );
+      </View>
+    );
 
   const renderItem = ({ item }) => {
     const stockColor = getStockColor(item.stock);
@@ -524,13 +514,13 @@ export default function ProductListScreen({ navigation, route }) {
     }
     
     return (
-      <TouchableOpacity 
-        style={styles.productCard}
+    <TouchableOpacity 
+      style={styles.productCard}
         onPress={() => handleProductPress(item)}
-      >
+    >
         <View style={styles.productCardContent}>
           <View style={styles.productMainInfo}>
-            <Text style={styles.productName}>{item.name}</Text>
+        <Text style={styles.productName}>{item.name}</Text>
             
             <View style={styles.productMeta}>
               {item.barcode && (
@@ -544,7 +534,7 @@ export default function ProductListScreen({ navigation, route }) {
                 <Ionicons name="pricetag-outline" size={14} color={colors.primary} />
                 <Text style={[styles.metaText, {color: colors.primary}]}>
                   {item.category || 'Sin categoría'}
-                </Text>
+        </Text>
               </View>
               
               {formattedExpiryDate && (
@@ -552,7 +542,7 @@ export default function ProductListScreen({ navigation, route }) {
                   <Ionicons name="calendar-outline" size={14} color={colors.text.secondary} />
                   <Text style={styles.metaText}>
                     Venc: {formattedExpiryDate}
-                  </Text>
+        </Text>
                 </View>
               )}
             </View>
@@ -618,9 +608,9 @@ export default function ProductListScreen({ navigation, route }) {
             <Ionicons name="trash-outline" size={18} color={colors.error} />
             <Text style={[styles.actionText, {color: colors.error}]}>Eliminar</Text>
           </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
+      </View>
+    </TouchableOpacity>
+  );
   };
 
   const renderSalesHistoryModal = () => (
@@ -1064,19 +1054,19 @@ export default function ProductListScreen({ navigation, route }) {
       
       {activeTab === 'products' && (
         <>
-          {renderCategoryFilter()}
-          
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
+      {renderCategoryFilter()}
+      
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
               <Text style={styles.loadingText}>Cargando productos...</Text>
-            </View>
+        </View>
           ) : filteredProducts.length > 0 ? (
-            <FlatList
+        <FlatList
               data={filteredProducts}
-              renderItem={renderItem}
+          renderItem={renderItem}
               keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContainer}
+          contentContainerStyle={styles.listContainer}
               refreshing={refreshing}
               onRefresh={onRefresh}
             />
@@ -1092,7 +1082,7 @@ export default function ProductListScreen({ navigation, route }) {
                       ? 'No hay productos con stock bajo' 
                       : 'No hay productos registrados'}
               </Text>
-              <TouchableOpacity
+              <TouchableOpacity 
                 style={styles.emptyAddButton}
                 onPress={() => navigation.navigate('AddProduct')}
               >
@@ -1106,12 +1096,12 @@ export default function ProductListScreen({ navigation, route }) {
       {activeTab === 'categories' && renderCategoriesTab()}
       
       {!isSelecting && activeTab === 'products' && (
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => navigation.navigate('AddProduct')}
-        >
-          <Ionicons name="add" size={30} color="white" />
-        </TouchableOpacity>
+      <TouchableOpacity 
+        style={styles.addButton}
+        onPress={() => navigation.navigate('AddProduct')}
+      >
+        <Ionicons name="add" size={30} color="white" />
+      </TouchableOpacity>
       )}
       
       {renderOptionsModal()}
