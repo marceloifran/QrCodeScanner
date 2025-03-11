@@ -500,7 +500,7 @@ export default function ScanProductScreen({ navigation, route }) {
                 value={searchQuery}
                 onChangeText={(text) => {
                   setSearchQuery(text);
-                  if (text.length > 2) {
+                  if (text.length > 1) {
                     searchProducts(text);
                   } else if (text.length === 0) {
                     setSearchResults([]);
@@ -563,7 +563,7 @@ export default function ScanProductScreen({ navigation, route }) {
                     }}
                   >
                     <Text style={styles.searchResultName}>{item.name}</Text>
-                    <Text style={styles.searchResultPrice}>Precio: $$ {formatMoney(item.price)}</Text>
+                    <Text style={styles.searchResultPrice}>Precio: $ {formatMoney(item.price)}</Text>
                     <Text style={styles.searchResultStock}>Stock: {item.stock}</Text>
                   </TouchableOpacity>
                 )}
@@ -571,7 +571,7 @@ export default function ScanProductScreen({ navigation, route }) {
                   searchQuery.length > 2 ? (
                     <Text style={styles.noResultsText}>No se encontraron productos</Text>
                   ) : searchQuery.length > 0 ? (
-                    <Text style={styles.noResultsText}>Escribe al menos 3 caracteres</Text>
+                    <Text style={styles.noResultsText}>Escribe al menos 2 caracteres</Text>
                   ) : null
                 }
                 style={{maxHeight: 300}}

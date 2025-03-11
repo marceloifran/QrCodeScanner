@@ -1,20 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TouchableOpacity, 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  Image
 } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase/config';
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, Timestamp } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  doc,
+  getDoc,
+} from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { formatPrice } from '../utils/formatters';
+import { useFocusEffect } from '@react-navigation/native';  // Import useFocusEffect
+
+const cache = {}; // Simple cache object
 
 export default function DashboardScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -32,20 +43,29 @@ export default function DashboardScreen({ navigation }) {
     businessName: '',
   });
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
+  const userId = auth.currentUser.uid; // Get userId here for efficiency
 
-  const loadDashboardData = async () => {
-    setLoading(true);
+  const fetchUserData = useCallback(async () => {
     try {
-      const userId = auth.currentUser.uid;
-      
-      // Cargar datos del usuario
+      if (cache[`user_${userId}`]) {
+        return cache[`user_${userId}`];
+      }
       const userDoc = await getDoc(doc(db, 'users', userId));
       const userData = userDoc.data() || {};
-      
-      // Cargar productos
+      cache[`user_${userId}`] = userData; // Store in cache
+      return userData;
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      return {};
+    }
+  }, [userId]);
+
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      if (cache[`products_${userId}`]) {
+        return cache[`products_${userId}`];
+      }
       const productsQuery = query(
         collection(db, 'products'),
         where('userId', '==', userId)
@@ -55,24 +75,24 @@ export default function DashboardScreen({ navigation }) {
         id: doc.id,
         ...doc.data()
       }));
-      
-      // Calcular estadísticas de productos
-      const totalProducts = products.length;
-      const lowStockProducts = products.filter(p => p.stock <= 5).length;
-      const inventoryValue = products.reduce((sum, product) => sum + (product.price * product.stock), 0);
-      
-      // Contar productos por categoría
-      const categoryCounts = {};
-      products.forEach(product => {
-        const category = product.category || 'Sin categoría';
-        categoryCounts[category] = (categoryCounts[category] || 0) + 1;
-      });
-      
-      // Cargar ventas
+      cache[`products_${userId}`] = products;
+      return products;
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      return [];
+    }
+  }, [userId]);
+
+  const fetchSales = useCallback(async () => {
+    try {
+      if (cache[`sales_${userId}`]) {
+        return cache[`sales_${userId}`];
+      }
       const salesQuery = query(
         collection(db, 'sales'),
         where('userId', '==', userId),
-        orderBy('date', 'desc')
+        orderBy('date', 'desc'),
+        limit(5)
       );
       const salesSnapshot = await getDocs(salesQuery);
       const sales = salesSnapshot.docs.map(doc => ({
@@ -80,48 +100,93 @@ export default function DashboardScreen({ navigation }) {
         ...doc.data(),
         date: doc.data().date?.toDate() || new Date()
       }));
-      
-      // Calcular estadísticas de ventas
-      const totalSales = sales.length;
-      const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
-      
-      // Obtener ventas recientes
-      const recentSales = sales.slice(0, 5);
-      
-      setStats({
-        totalProducts,
-        totalSales,
-        totalRevenue,
-        lowStockProducts,
-        inventoryValue,
-        categoryCounts,
-        recentSales,
-        userName: userData.name || 'Usuario',
-        userEmail: auth.currentUser.email,
-        businessName: userData.businessName || 'Mi Negocio',
-      });
+      cache[`sales_${userId}`] = sales;
+      return sales;
     } catch (error) {
-      console.error('Error al cargar datos del dashboard:', error);
+      console.error('Error fetching sales:', error);
+      return [];
+    }
+  }, [userId]);
+
+
+  const calculateStats = useCallback((products, sales, userData) => {
+    const totalProducts = products.length;
+    const lowStockProducts = products.filter(p => p.stock <= 5).length;
+    const inventoryValue = products.reduce((sum, product) => sum + (product.price * product.stock), 0);
+
+    const categoryCounts = {};
+    products.forEach(product => {
+      const category = product.category || 'Sin categoría';
+      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+    });
+
+    const totalSales = sales.length;
+    const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+    const recentSales = sales.slice(0, 5);
+
+    return {
+      totalProducts,
+      totalSales,
+      totalRevenue,
+      lowStockProducts,
+      inventoryValue,
+      categoryCounts,
+      recentSales,
+      userName: userData.name || 'Usuario',
+      userEmail: auth.currentUser.email,
+      businessName: userData.businessName || 'Mi Negocio',
+    };
+  }, []);
+
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [userData, products, sales] = await Promise.all([
+        fetchUserData(),
+        fetchProducts(),
+        fetchSales(),
+      ]);
+
+      const calculatedStats = calculateStats(products, sales, userData);
+      setStats(calculatedStats);
+
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [fetchProducts, fetchSales, fetchUserData, calculateStats]); // Add dependencies
 
-  const onRefresh = () => {
-    setRefreshing(true);
+
+  useEffect(() => {
     loadDashboardData();
-  };
+  }, [loadDashboardData]); // loadDashboardData as dependency.  Crucial.
+
+  // Reload data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDashboardData();
+    }, [loadDashboardData])
+  );
+
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    // Clear cache on refresh.  This is optional but ensures fresh data.
+    Object.keys(cache).forEach(key => delete cache[key]);
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
     } catch (error) {
-      console.error('Error al cerrar sesión:', error);
+      console.error('Error logging out:', error);
     }
   };
 
-  if (loading && !refreshing) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -142,7 +207,7 @@ export default function DashboardScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -150,15 +215,15 @@ export default function DashboardScreen({ navigation }) {
       >
         {/* Resumen principal */}
         <View style={styles.summaryContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.summaryCard, styles.revenueCard]}
             onPress={() => navigation.navigate('Sales', { screen: 'SalesHistory' })}
           >
             <Text style={styles.summaryValue}>${formatPrice(stats.totalRevenue, 0)}</Text>
             <Text style={styles.summaryLabel}>Ingresos Totales</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.summaryCard, styles.inventoryCard]}
             onPress={() => navigation.navigate('Products', { screen: 'ProductList' })}
           >
@@ -169,7 +234,7 @@ export default function DashboardScreen({ navigation }) {
 
         {/* Estadísticas rápidas */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.statCard}
             onPress={() => navigation.navigate('Products', { screen: 'ProductList' })}
           >
@@ -179,12 +244,12 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.statValue}>{stats.totalProducts}</Text>
             <Text style={styles.statLabel}>Productos</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.statCard}
-            onPress={() => navigation.navigate('Products', { 
-              screen: 'ProductList', 
-              params: { filterLowStock: true } 
+            onPress={() => navigation.navigate('Products', {
+              screen: 'ProductList',
+              params: { filterLowStock: true }
             })}
           >
             <View style={[styles.iconCircle, { backgroundColor: '#FF9800' }]}>
@@ -193,8 +258,8 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.statValue}>{stats.lowStockProducts}</Text>
             <Text style={styles.statLabel}>Stock Bajo</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.statCard}
             onPress={() => navigation.navigate('Sales', { screen: 'SalesHistory' })}
           >
@@ -214,15 +279,15 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.seeAllText}>Ver todas</Text>
             </TouchableOpacity>
           </View>
-          
+
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesContainer}>
             {Object.entries(stats.categoryCounts).map(([category, count], index) => (
-              <TouchableOpacity 
+              <TouchableOpacity
                 key={category}
                 style={styles.categoryCard}
-                onPress={() => navigation.navigate('Products', { 
-                  screen: 'ProductList', 
-                  params: { selectedCategory: category } 
+                onPress={() => navigation.navigate('Products', {
+                  screen: 'ProductList',
+                  params: { selectedCategory: category }
                 })}
               >
                 <Text style={styles.categoryCount}>{count}</Text>
@@ -240,15 +305,15 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.seeAllText}>Ver todas</Text>
             </TouchableOpacity>
           </View>
-          
+
           {stats.recentSales.length > 0 ? (
             stats.recentSales.map((sale, index) => (
               <View key={index} style={styles.saleCard}>
                 <View style={styles.saleInfo}>
                   <Text style={styles.saleDate}>
-                    {sale.date.toLocaleDateString('es-AR', { 
-                      day: '2-digit', 
-                      month: '2-digit', 
+                    {sale.date.toLocaleDateString('es-AR', {
+                      day: '2-digit',
+                      month: '2-digit',
                       year: '2-digit',
                       hour: '2-digit',
                       minute: '2-digit'
@@ -268,7 +333,7 @@ export default function DashboardScreen({ navigation }) {
 
         {/* Acciones rápidas */}
         <View style={styles.actionsContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('Scan')}
           >
@@ -277,8 +342,8 @@ export default function DashboardScreen({ navigation }) {
             </View>
             <Text style={styles.actionText}>Nueva Venta</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.actionButton}
             onPress={() => navigation.navigate('Products', { screen: 'AddProduct' })}
           >
@@ -287,12 +352,12 @@ export default function DashboardScreen({ navigation }) {
             </View>
             <Text style={styles.actionText}>Agregar Producto</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('Products', { 
-              screen: 'ProductList', 
-              params: { filterLowStock: true } 
+            onPress={() => navigation.navigate('Products', {
+              screen: 'ProductList',
+              params: { filterLowStock: true }
             })}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: '#FF9800' }]}>
@@ -533,4 +598,4 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
   },
-}); 
+});
