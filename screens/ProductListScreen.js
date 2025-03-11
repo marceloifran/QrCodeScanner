@@ -603,7 +603,7 @@ export default function ProductListScreen({ navigation, route }) {
           
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => confirmDeleteProduct(item.id)}
+            onPress={() => confirmDeleteProduct(item.id, item.name)}
           >
             <Ionicons name="trash-outline" size={18} color={colors.error} />
             <Text style={[styles.actionText, {color: colors.error}]}>Eliminar</Text>
@@ -1031,6 +1031,49 @@ export default function ProductListScreen({ navigation, route }) {
     // Usar las ventas ya cargadas para este producto
     setProductSalesHistory(product.sales || []);
     setShowSalesModal(true);
+  };
+
+  // Agregar la función confirmDeleteProduct que falta
+  const confirmDeleteProduct = (productId, productName) => {
+    Alert.alert(
+      "Eliminar Producto",
+      `¿Estás seguro de que deseas eliminar "${productName}"?`,
+      [
+        {
+          text: "Cancelar",
+          style: "cancel"
+        },
+        {
+          text: "Eliminar",
+          onPress: () => deleteProduct(productId),
+          style: "destructive"
+        }
+      ]
+    );
+  };
+
+  // Asegurarse de que la función deleteProduct esté correctamente implementada
+  const deleteProduct = async (productId) => {
+    try {
+      setLoading(true);
+      
+      // Referencia al documento del producto
+      const productRef = doc(db, 'products', productId);
+      
+      // Eliminar el producto
+      await deleteDoc(productRef);
+      
+      // Actualizar la lista de productos
+      setProducts(products.filter(product => product.id !== productId));
+      
+      // Mostrar mensaje de éxito
+      Alert.alert("Éxito", "Producto eliminado correctamente");
+    } catch (error) {
+      console.error("Error al eliminar producto:", error);
+      Alert.alert("Error", "No se pudo eliminar el producto");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
