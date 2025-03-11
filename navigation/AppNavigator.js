@@ -139,14 +139,21 @@ const ProductsStack = () => (
     <Stack.Screen 
       name="ProductList" 
       component={ProductListScreen} 
-      options={{ 
+      options={({ navigation }) => ({
         title: 'Lista de Productos',
-        headerShown: true,
+        headerLeft: () => (
+          <TouchableOpacity 
+            style={{ marginLeft: 15 }}
+            onPress={() => navigation.navigate('Dashboard')}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+        ),
         headerStyle: {
           backgroundColor: colors.primary,
         },
         headerTintColor: '#fff',
-      }} 
+      })}
     />
     <Stack.Screen 
       name="AddProduct" 

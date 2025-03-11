@@ -133,13 +133,12 @@ export default function DashboardScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Bienvenido,</Text>
-          <Text style={styles.userName}>{stats.userName}</Text>
-          <Text style={styles.businessName}>{stats.businessName}</Text>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Panel de Control</Text>
+          <Text style={styles.headerSubtitle}>Resumen de tu negocio</Text>
         </View>
         <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.profileButton}>
-          <Ionicons name="person-circle" size={40} color="white" />
+          <Ionicons name="person-circle" size={32} color="white" />
         </TouchableOpacity>
       </View>
 
@@ -155,7 +154,7 @@ export default function DashboardScreen({ navigation }) {
             style={[styles.summaryCard, styles.revenueCard]}
             onPress={() => navigation.navigate('Sales', { screen: 'SalesHistory' })}
           >
-            <Text style={styles.summaryValue}>{formatPrice(stats.totalRevenue)}</Text>
+            <Text style={styles.summaryValue}>${formatPrice(stats.totalRevenue, 0)}</Text>
             <Text style={styles.summaryLabel}>Ingresos Totales</Text>
           </TouchableOpacity>
           
@@ -163,7 +162,7 @@ export default function DashboardScreen({ navigation }) {
             style={[styles.summaryCard, styles.inventoryCard]}
             onPress={() => navigation.navigate('Products', { screen: 'ProductList' })}
           >
-            <Text style={styles.summaryValue}>{formatPrice(stats.inventoryValue)}</Text>
+            <Text style={styles.summaryValue}>${formatPrice(stats.inventoryValue, 0)}</Text>
             <Text style={styles.summaryLabel}>Valor del Inventario</Text>
           </TouchableOpacity>
         </View>
@@ -183,7 +182,10 @@ export default function DashboardScreen({ navigation }) {
           
           <TouchableOpacity 
             style={styles.statCard}
-            onPress={() => navigation.navigate('Products', { screen: 'ProductList', params: { filter: 'lowStock' } })}
+            onPress={() => navigation.navigate('Products', { 
+              screen: 'ProductList', 
+              params: { filterLowStock: true } 
+            })}
           >
             <View style={[styles.iconCircle, { backgroundColor: '#FF9800' }]}>
               <Ionicons name="alert-circle-outline" size={24} color="white" />
@@ -216,9 +218,12 @@ export default function DashboardScreen({ navigation }) {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesContainer}>
             {Object.entries(stats.categoryCounts).map(([category, count], index) => (
               <TouchableOpacity 
-                key={index}
+                key={category}
                 style={styles.categoryCard}
-                onPress={() => navigation.navigate('Products', { screen: 'ProductList', params: { filter: 'category', category } })}
+                onPress={() => navigation.navigate('Products', { 
+                  screen: 'ProductList', 
+                  params: { selectedCategory: category } 
+                })}
               >
                 <Text style={styles.categoryCount}>{count}</Text>
                 <Text style={styles.categoryName}>{category}</Text>
@@ -253,7 +258,7 @@ export default function DashboardScreen({ navigation }) {
                     {sale.items?.length || 0} productos
                   </Text>
                 </View>
-                <Text style={styles.saleTotal}>{formatPrice(sale.total)}</Text>
+                <Text style={styles.saleTotal}>${formatPrice(sale.total, 0)}</Text>
               </View>
             ))
           ) : (
@@ -285,7 +290,10 @@ export default function DashboardScreen({ navigation }) {
           
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => navigation.navigate('Products', { screen: 'ProductList', params: { filter: 'lowStock' } })}
+            onPress={() => navigation.navigate('Products', { 
+              screen: 'ProductList', 
+              params: { filterLowStock: true } 
+            })}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: '#FF9800' }]}>
               <Ionicons name="alert-circle-outline" size={24} color="white" />
@@ -321,6 +329,19 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
     backgroundColor: colors.primary,
+  },
+  headerContent: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
   },
   welcomeText: {
     fontSize: 14,
