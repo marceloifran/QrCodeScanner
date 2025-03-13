@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -7,410 +7,443 @@ import {
   TouchableOpacity, 
   TextInput,
   ActivityIndicator,
-  ScrollView,
-  Keyboard,
   Alert,
-  Modal
+  RefreshControl,
+  ScrollView
 } from 'react-native';
-import { collection, getDocs, query, where, doc, deleteDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
-import { colors } from '../theme/colors';
-import { predefinedCategories } from '../constants/categories';
+import { collection, query, where, getDocs, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { db, auth } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
 import { formatPrice } from '../utils/formatters';
+import { getCategoryName, getCategoryIcon, predefinedCategories } from '../constants/categories';
+import { useProducts } from '../hooks/useProducts';
 
 export default function ProductListScreen({ navigation, route }) {
-  const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [lowStockFilter, setLowStockFilter] = useState(false);
-  const [categoryCounts, setCategoryCounts] = useState({});
-  const [showOptionsModal, setShowOptionsModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState('asc');
   
-  // Verificar si estamos en modo selección (para ventas)
+  const { products, loading, loadProducts } = useProducts();
+  
   const isSelecting = route.params?.isSelecting || false;
-
+  
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      loadProducts();
-    });
-    return unsubscribe;
-  }, [navigation]);
-
-  useEffect(() => {
-    // Si se recibió un parámetro para filtrar por stock bajo, aplicarlo
-    if (route.params?.filterLowStock) {
-      setLowStockFilter(true);
-    } else {
-      setLowStockFilter(false);
-    }
-    
-    // Si se recibió una categoría seleccionada, aplicarla
-    if (route.params?.selectedCategory) {
-      setSelectedCategory(route.params.selectedCategory);
-    }
-  }, [route.params]);
-
-  useEffect(() => {
-    filterProducts();
-  }, [products, searchQuery, selectedCategory, lowStockFilter]);
-
-  const loadProducts = async () => {
-    setLoading(true);
-    try {
-      const q = query(
-        collection(db, 'products'),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const querySnapshot = await getDocs(q);
+    // Verificar si hay parámetros de navegación para filtros
+    if (route.params) {
+      // Filtro de stock bajo
+      if (route.params.filter === 'lowStock') {
+        setLowStockFilter(true);
+        setSelectedCategory(null);
+      }
       
-      const productsList = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      setProducts(productsList);
-      
-      // Contar productos por categoría
-      const counts = {};
-      productsList.forEach(product => {
-        if (counts[product.category]) {
-          counts[product.category]++;
+      // Filtro por categoría
+      if (route.params.filter === 'category' && route.params.category) {
+        const categoryParam = route.params.category;
+        
+        // Verificar si es un ID o un nombre
+        const categoryById = predefinedCategories.find(cat => cat.id === categoryParam);
+        
+        if (categoryById) {
+          // Si es un ID, usarlo directamente
+          setSelectedCategory(categoryParam);
         } else {
-          counts[product.category] = 1;
+          // Si es un nombre, buscar el ID correspondiente
+          const categoryByName = predefinedCategories.find(cat => cat.name === categoryParam);
+          if (categoryByName) {
+            setSelectedCategory(categoryByName.id);
+          } else {
+            // Si no se encuentra, podría ser una categoría personalizada
+            setSelectedCategory(categoryParam);
+          }
         }
-      });
+        
+        setLowStockFilter(false);
+      }
+    }
+    
+    loadProducts();
+  }, [route.params]);
+  
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', loadProducts);
+    return unsubscribe;
+  }, [navigation, loadProducts]);
+  
+  useEffect(() => {
+    if (products.length > 0) {
+      // Imprimir las categorías de los productos para depuración
+      console.log('Categorías de productos:', products.map(p => ({
+        name: p.name,
+        category: p.category,
+        categoryName: getCategoryName(p.category)
+      })));
       
-      setCategoryCounts(counts);
-    } catch (error) {
-      console.error('Error al cargar productos:', error);
-      Alert.alert('Error', 'No se pudieron cargar los productos');
-    } finally {
-      setLoading(false);
+      // Imprimir las categorías predefinidas para comparar
+      console.log('Categorías predefinidas:', predefinedCategories);
     }
-  };
-
-  const filterProducts = () => {
-    let filtered = [...products];
+  }, [products]);
+  
+  const filteredProducts = useMemo(() => {
+    let result = [...products];
     
-    // Filtrar por categoría
     if (selectedCategory) {
-      filtered = filtered.filter(product => product.category === selectedCategory);
+      console.log('Filtrando por categoría:', selectedCategory);
+      
+      // Intentar diferentes estrategias de filtrado
+      result = result.filter(product => {
+        // 1. Coincidencia directa por ID
+        if (product.category === selectedCategory) {
+          return true;
+        }
+        
+        // 2. Coincidencia por nombre (para casos donde se guarda el nombre en lugar del ID)
+        const categoryName = getCategoryName(selectedCategory);
+        if (product.category === categoryName) {
+          return true;
+        }
+        
+        // 3. Coincidencia inversa (cuando el selectedCategory es un nombre pero el producto tiene ID)
+        const matchingCategory = predefinedCategories.find(cat => 
+          cat.name === selectedCategory && cat.id === product.category
+        );
+        if (matchingCategory) {
+          return true;
+        }
+        
+        return false;
+      });
     }
     
-    // Filtrar por stock bajo
     if (lowStockFilter) {
-      filtered = filtered.filter(product => product.stock <= 5);
+      result = result.filter(product => product.stock <= 5);
     }
     
-    // Filtrar por búsqueda
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(product => 
-        product.name.toLowerCase().includes(query) ||
-        product.barcode?.toLowerCase().includes(query) ||
+      result = result.filter(product => 
+        product.name.toLowerCase().includes(query) || 
+        (product.barcode && product.barcode.includes(query)) ||
         product.price.toString().includes(query)
       );
     }
     
-    setFilteredProducts(filtered);
-  };
-
-  const clearFilters = () => {
+    result.sort((a, b) => {
+      let valueA, valueB;
+      
+      switch (sortBy) {
+        case 'price':
+          valueA = a.price || 0;
+          valueB = b.price || 0;
+          break;
+        case 'stock':
+          valueA = a.stock || 0;
+          valueB = b.stock || 0;
+          break;
+        default: // name
+          valueA = a.name || '';
+          valueB = b.name || '';
+          break;
+      }
+      
+      if (typeof valueA === 'string') {
+        return sortOrder === 'asc' 
+          ? valueA.localeCompare(valueB) 
+          : valueB.localeCompare(valueA);
+      } else {
+        return sortOrder === 'asc' 
+          ? valueA - valueB 
+          : valueB - valueA;
+      }
+    });
+    
+    return result;
+  }, [products, selectedCategory, lowStockFilter, searchQuery, sortBy, sortOrder]);
+  
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    
+    // Inicializar todas las categorías predefinidas con 0
+    predefinedCategories.forEach(cat => {
+      counts[cat.id] = 0;
+    });
+    
+    // Contar productos por categoría
+    products.forEach(product => {
+      if (product.category) {
+        counts[product.category] = (counts[product.category] || 0) + 1;
+      }
+    });
+    
+    return counts;
+  }, [products]);
+  
+  const toggleSort = useCallback((field) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  }, [sortBy, sortOrder]);
+  
+  const clearFilters = useCallback(() => {
     setSelectedCategory(null);
     setLowStockFilter(false);
     setSearchQuery('');
-    navigation.setParams({ filterLowStock: false, selectedCategory: null });
+  }, []);
+  
+  const handleRefresh = () => {
+    loadProducts();
   };
-
-  const getStockColor = (stock) => {
-    if (stock <= 0) return colors.error; // Rojo para sin stock
-    if (stock <= 5) return '#FFA500'; // Naranja para stock bajo
-    return colors.success; // Verde para stock normal
-  };
-
+  
   const handleProductPress = (product) => {
-    setSelectedProduct(product);
-    setShowOptionsModal(true);
+    if (isSelecting) {
+      navigation.navigate('NewCart', { selectedProduct: product });
+    } else {
+      navigation.navigate('EditProduct', { productId: product.id });
+    }
   };
-
-  const handleEditProduct = () => {
-    setShowOptionsModal(false);
-    navigation.navigate('EditProduct', { productId: selectedProduct.id });
-  };
-
-  const handleDeleteProduct = () => {
+  
+  const handleDeleteProduct = useCallback((productId, productName) => {
     Alert.alert(
-      'Confirmar eliminación',
-      `¿Estás seguro de que deseas eliminar "${selectedProduct.name}"?`,
+      'Eliminar Producto',
+      `¿Estás seguro de que deseas eliminar "${productName}"?`,
       [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Eliminar', 
+        {
+          text: 'Cancelar',
+          style: 'cancel'
+        },
+        {
+          text: 'Eliminar',
           style: 'destructive',
           onPress: async () => {
-            setShowOptionsModal(false);
-            setLoading(true);
             try {
-              await deleteDoc(doc(db, 'products', selectedProduct.id));
-              
-              // Actualizar la lista de productos
-              const updatedProducts = products.filter(p => p.id !== selectedProduct.id);
-              setProducts(updatedProducts);
-              
-              // Actualizar los productos filtrados
-              const updatedFiltered = filteredProducts.filter(p => p.id !== selectedProduct.id);
-              setFilteredProducts(updatedFiltered);
-              
+              await deleteDoc(doc(db, 'products', productId));
+              // Recargar productos después de eliminar
+              loadProducts();
               Alert.alert('Éxito', 'Producto eliminado correctamente');
             } catch (error) {
               console.error('Error al eliminar producto:', error);
               Alert.alert('Error', 'No se pudo eliminar el producto');
-            } finally {
-              setLoading(false);
             }
           }
         }
       ]
     );
-  };
-
-  const renderCategoryFilter = () => (
-    <View style={styles.filtersContainer}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <TouchableOpacity
-          style={[
-            styles.categoryChip,
-            selectedCategory === null && !lowStockFilter && styles.categoryChipSelected
-          ]}
-          onPress={() => {
-            setSelectedCategory(null);
-            setLowStockFilter(false);
-            navigation.setParams({ filterLowStock: false, selectedCategory: null });
-          }}
-        >
-          <Text
-            style={[
-              styles.categoryChipText,
-              selectedCategory === null && !lowStockFilter && styles.categoryChipTextSelected
-            ]}
-          >
-            Todos ({products.length})
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[
-            styles.categoryChip,
-            lowStockFilter && styles.categoryChipSelected,
-            { backgroundColor: lowStockFilter ? '#FFA500' : colors.surface }
-          ]}
-          onPress={() => {
-            setLowStockFilter(!lowStockFilter);
-            navigation.setParams({ filterLowStock: !lowStockFilter });
-          }}
-        >
-          <Text
-            style={[
-              styles.categoryChipText,
-              lowStockFilter && styles.categoryChipTextSelected
-            ]}
-          >
-            Stock Bajo ({products.filter(p => p.stock <= 5).length})
-          </Text>
-        </TouchableOpacity>
-        
-        {predefinedCategories.map(cat => {
-          const count = categoryCounts[cat.id] || 0;
-          if (count === 0) return null; // No mostrar categorías sin productos
-          
-          return (
-            <TouchableOpacity
-              key={cat.id}
-              style={[
-                styles.categoryChip,
-                selectedCategory === cat.id && styles.categoryChipSelected
-              ]}
-              onPress={() => {
-                setSelectedCategory(cat.id);
-                setLowStockFilter(false);
-                navigation.setParams({ filterLowStock: false, selectedCategory: cat.id });
-              }}
-            >
-              <Text
-                style={[
-                  styles.categoryChipText,
-                  selectedCategory === cat.id && styles.categoryChipTextSelected
-                ]}
-              >
-                {cat.name} ({count})
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-      
-      {(selectedCategory || lowStockFilter || searchQuery) && (
-        <TouchableOpacity
-          style={styles.clearFiltersButton}
-          onPress={clearFilters}
-        >
-          <Ionicons name="close-circle" size={16} color="white" />
-          <Text style={styles.clearFiltersText}>Limpiar filtros</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  const renderItem = ({ item }) => {
-    const stockColor = getStockColor(item.stock);
+  }, [loadProducts]);
+  
+  const renderItem = useCallback(({ item }) => {
+    let stockColor = colors.success;
+    if (item.stock <= 0) {
+      stockColor = colors.error;
+    } else if (item.stock <= 5) {
+      stockColor = colors.warning;
+    }
+    
+    const category = predefinedCategories.find(cat => cat.id === item.category) || {};
+    const categoryIcon = category.icon || 'grid-outline';
     
     return (
-      <TouchableOpacity 
-        style={styles.productCard}
-        onPress={() => handleProductPress(item)}
-      >
-        <View style={styles.productInfo}>
-          <Text style={styles.productName}>{item.name}</Text>
-          {item.barcode && <Text style={styles.productBarcode}>{item.barcode}</Text>}
-          <Text style={styles.productCategory}>{item.category || 'Sin categoría'}</Text>
-          <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
-          <Text style={[styles.productStock, { color: stockColor }]}>
-            Stock: {item.stock} {item.stock <= 5 ? '(Bajo)' : ''}
-          </Text>
-        </View>
+      <View style={styles.productCard}>
+        <TouchableOpacity 
+          style={styles.productContent}
+          onPress={() => navigation.navigate('EditProduct', { productId: item.id })}
+        >
+          <View style={styles.productHeader}>
+            <View style={styles.categoryIconContainer}>
+              <Ionicons name={categoryIcon} size={24} color={colors.primary} />
+            </View>
+            <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+          </View>
+          
+          <View style={styles.productDetails}>
+            <View style={styles.priceContainer}>
+              <Ionicons name="pricetag-outline" size={18} color="#666" />
+              <Text style={styles.productPrice}> $ {item.price}</Text>
+            </View>
+            
+            
+            <View style={styles.stockContainer}>
+              <Ionicons name="cube-outline" size={18} color={stockColor} />
+              <Text style={[styles.productStock, { color: stockColor }]}>
+                {" "}{item.stock} unid.
+              </Text>
+            </View>
+          </View>
+        </TouchableOpacity>
         
-        {isSelecting && (
-          <TouchableOpacity
-            style={styles.addToCartButton}
-            onPress={() => {
-              if (route.params?.onSelectProduct) {
-                route.params.onSelectProduct(item);
-                navigation.goBack();
-              }
-            }}
-          >
-            <Ionicons name="add-circle" size={30} color={colors.primary} />
-          </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.deleteButton}
+          onPress={() => handleDeleteProduct(item.id, item.name)}
+        >
+          <Ionicons name="trash-outline" size={22} color={colors.error} />
+        </TouchableOpacity>
+      </View>
+    );
+  }, [navigation, handleDeleteProduct]);
+  
+  const keyExtractor = useCallback((item) => item.id, []);
+  
+  const renderSortHeader = () => (
+    <View style={styles.sortHeader}>
+      <TouchableOpacity 
+        style={[
+          styles.sortButton, 
+          sortBy === 'name' && styles.sortButtonActive
+        ]}
+        onPress={() => toggleSort('name')}
+      >
+        <Text style={styles.sortButtonText}>Nombre</Text>
+        {sortBy === 'name' && (
+          <Ionicons 
+            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+            size={16} 
+            color={colors.primary} 
+          />
         )}
       </TouchableOpacity>
-    );
-  };
-
+      
+      <TouchableOpacity 
+        style={[
+          styles.sortButton, 
+          sortBy === 'price' && styles.sortButtonActive
+        ]}
+        onPress={() => toggleSort('price')}
+      >
+        <Text style={styles.sortButtonText}>Precio</Text>
+        {sortBy === 'price' && (
+          <Ionicons 
+            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+            size={16} 
+            color={colors.primary} 
+          />
+        )}
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={[
+          styles.sortButton, 
+          sortBy === 'stock' && styles.sortButtonActive
+        ]}
+        onPress={() => toggleSort('stock')}
+      >
+        <Text style={styles.sortButtonText}>Stock</Text>
+        {sortBy === 'stock' && (
+          <Ionicons 
+            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+            size={16} 
+            color={colors.primary} 
+          />
+        )}
+      </TouchableOpacity>
+    </View>
+  );
+  
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={colors.text.secondary} />
+        <Ionicons name="search" size={20} color="#aaa" />
         <TextInput
           style={styles.searchInput}
           placeholder="Buscar productos..."
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
-        {searchQuery !== '' && (
+        {searchQuery ? (
           <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={20} color={colors.text.secondary} />
+            <Ionicons name="close-circle" size={24} color="#aaa" />
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
       
-      {renderCategoryFilter()}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false} 
+        contentContainerStyle={styles.filtersContainer}
+        style={{ flexGrow: 0, paddingBottom: 5 }}
+      >
+        <TouchableOpacity
+          style={[styles.filterChip, !selectedCategory && !lowStockFilter && styles.filterChipSelected]}
+          onPress={clearFilters}
+        >
+          <Text style={!selectedCategory && !lowStockFilter ? styles.filterChipTextSelected : styles.filterChipText}>
+            Todos ({products.length})
+          </Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.filterChip, lowStockFilter && styles.filterChipSelected]}
+          onPress={() => setLowStockFilter(!lowStockFilter)}
+        >
+          <Text style={lowStockFilter ? styles.filterChipTextSelected : styles.filterChipText}>
+            Stock Bajo ({products.filter(p => p.stock <= 5).length})
+          </Text>
+        </TouchableOpacity>
+        
+        {predefinedCategories.map(category => {
+          const count = categoryCounts[category.id] || 0;
+          if (count === 0) return null;
+          
+          return (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.filterChip, 
+                selectedCategory === category.id && styles.filterChipSelected
+              ]}
+              onPress={() => {
+                // Si ya está seleccionada, deseleccionar
+                if (selectedCategory === category.id) {
+                  setSelectedCategory(null);
+                } else {
+                  // Seleccionar esta categoría
+                  setSelectedCategory(category.id);
+                  // Asegurarse de que el filtro de stock bajo esté desactivado
+                  setLowStockFilter(false);
+                }
+              }}
+            >
+              <Text style={selectedCategory === category.id ? styles.filterChipTextSelected : styles.filterChipText}>
+                {category.name} ({count})
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+      
+      {renderSortHeader()}
       
       {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
       ) : (
-        <>
-          {filteredProducts.length > 0 && (
-            <View style={styles.resultsHeader}>
-              <Text style={styles.resultsCount}>
-                {filteredProducts.length} producto{filteredProducts.length !== 1 ? 's' : ''} encontrado{filteredProducts.length !== 1 ? 's' : ''}
+        <FlatList
+          data={filteredProducts}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.productList}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                No hay productos para mostrar
               </Text>
             </View>
-          )}
-          
-          <FlatList
-            data={filteredProducts}
-            renderItem={renderItem}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.listContainer}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="basket" size={50} color={colors.text.secondary} />
-                <Text style={styles.emptyText}>
-                  {selectedCategory 
-                    ? `No hay productos en la categoría ${predefinedCategories.find(c => c.id === selectedCategory)?.name || ''}`
-                    : lowStockFilter
-                      ? "No hay productos con stock bajo"
-                      : searchQuery 
-                        ? `No se encontraron productos para "${searchQuery}"`
-                        : "No hay productos registrados"}
-                </Text>
-                <TouchableOpacity 
-                  style={styles.emptyAddButton}
-                  onPress={() => navigation.navigate('AddProduct')}
-                >
-                  <Text style={styles.emptyAddButtonText}>Agregar Producto</Text>
-                </TouchableOpacity>
-              </View>
-            }
-          />
-        </>
+          }
+        />
       )}
       
       <TouchableOpacity 
-        style={styles.addButton}
+        style={styles.addButton} 
         onPress={() => navigation.navigate('AddProduct')}
       >
-        <Ionicons name="add" size={30} color="white" />
+        <Ionicons name="add" size={30} color="#fff" />
       </TouchableOpacity>
-      
-      {/* Modal de opciones para el producto */}
-      <Modal
-        visible={showOptionsModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowOptionsModal(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowOptionsModal(false)}
-        >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {selectedProduct?.name}
-            </Text>
-            
-            <TouchableOpacity 
-              style={styles.modalOption}
-              onPress={handleEditProduct}
-            >
-              <Ionicons name="create-outline" size={24} color={colors.primary} />
-              <Text style={styles.modalOptionText}>Editar producto</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.modalOption}
-              onPress={handleDeleteProduct}
-            >
-              <Ionicons name="trash-outline" size={24} color="#FF3B30" />
-              <Text style={[styles.modalOptionText, { color: '#FF3B30' }]}>Eliminar producto</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.closeButton}
-              onPress={() => setShowOptionsModal(false)}
-            >
-              <Text style={styles.closeButtonText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 }
@@ -418,211 +451,170 @@ export default function ProductListScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#f8f9fa',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 10,
+    backgroundColor: 'white',
     margin: 10,
-    paddingHorizontal: 15,
-    height: 50,
+    padding: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#e0e0e0',
   },
   searchInput: {
     flex: 1,
     marginLeft: 10,
     fontSize: 16,
-    color: colors.text.primary,
   },
   filtersContainer: {
-    marginHorizontal: 10,
-    marginBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    flexGrow: 1,
   },
-  categoryChip: {
+  filterChip: {
     paddingHorizontal: 15,
     paddingVertical: 10,
-    backgroundColor: colors.surface,
-    borderRadius: 25,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
     marginRight: 10,
-    marginVertical: 5,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: '#e0e0e0',
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  categoryChipSelected: {
+  filterChipSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  categoryChipText: {
-    color: colors.text.secondary,
+  filterChipText: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  filterChipTextSelected: {
+    color: 'white',
     fontSize: 14,
     fontWeight: '500',
+    textAlign: 'center',
   },
-  categoryChipTextSelected: {
-    color: 'white',
-    fontWeight: '600',
+  sortHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    marginBottom: 10,
+    borderRadius: 8,
   },
-  clearFiltersButton: {
+  sortButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.error,
-    borderRadius: 20,
-    paddingHorizontal: 15,
     paddingVertical: 8,
-    marginTop: 10,
-    alignSelf: 'center',
   },
-  clearFiltersText: {
-    color: 'white',
-    marginLeft: 5,
+  sortButtonActive: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 6,
+  },
+  sortButtonText: {
+    fontSize: 15,
+    marginRight: 6,
     fontWeight: '500',
   },
-  loadingContainer: {
+  loader: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  resultsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    marginBottom: 10,
-  },
-  resultsCount: {
-    color: colors.text.secondary,
-    fontSize: 14,
-  },
-  listContainer: {
+  productList: {
     padding: 10,
   },
   productCard: {
     backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e0e0e0',
+    flexDirection: 'row',
   },
-  productInfo: {
+  productContent: {
     flex: 1,
+    paddingRight: 10,
+  },
+  productHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  categoryIconContainer: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#e8f5e9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   productName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: colors.text.primary,
-    marginBottom: 5,
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
   },
-  productBarcode: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 5,
+  productDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
   },
-  productCategory: {
-    fontSize: 14,
-    color: colors.primary,
-    marginBottom: 5,
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  stockContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   productPrice: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 5,
+    fontWeight: '500',
+    color: '#333',
   },
   productStock: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '500',
   },
   emptyContainer: {
+    padding: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 50,
   },
   emptyText: {
     fontSize: 16,
-    color: colors.text.secondary,
-    marginTop: 10,
+    color: '#666',
     textAlign: 'center',
-    marginBottom: 20,
-  },
-  emptyAddButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 5,
-  },
-  emptyAddButtonText: {
-    color: 'white',
-    fontWeight: '500',
   },
   addButton: {
     position: 'absolute',
     bottom: 20,
     right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    elevation: 4,
   },
-  addToCartButton: {
-    padding: 10,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  deleteButton: {
     justifyContent: 'center',
     alignItems: 'center',
+    paddingLeft: 15,
+    width: 50,
   },
-  modalContent: {
-    width: '80%',
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 20,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  modalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  modalOptionText: {
-    fontSize: 16,
-    color: '#333',
-    marginLeft: 15,
-  },
-  closeButton: {
-    marginTop: 20,
-    paddingVertical: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 5,
-    alignItems: 'center',
-  },
-  closeButtonText: {
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '500',
-  },
-}); 
+});

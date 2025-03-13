@@ -240,7 +240,7 @@ export default function NewCartScreen({ navigation, route }) {
             style={styles.checkoutButton}
             onPress={handleCheckout}
           >
-            <Text style={styles.checkoutButtonText}>Finalizar Venta</Text>
+            <Text style={styles.checkoutButtonText}>Finalizar </Text>
           </TouchableOpacity>
         </View>
       )}

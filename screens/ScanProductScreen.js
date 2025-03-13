@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -40,6 +40,9 @@ export default function ScanProductScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [saleProcessing, setSaleProcessing] = useState(false); // Nuevo estado
+
+  const cameraRef = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -69,10 +72,11 @@ export default function ScanProductScreen({ navigation, route }) {
 
   // Escaneo del código de barras
   const handleBarCodeScanned = ({ type, data }) => {
-    setScanning(false);
-    setLoading(true);
-    console.log(`Código escaneado único: ${data} (Tipo: ${type})`);
-    processBarcode(data);
+    if (scanning && !loading && !alertActive) { // Solo escanear si está en modo escaneo y no está cargando o mostrando alerta
+      setScanning(false);
+      setLoading(true);
+      processBarcode(data);
+    }
   };
 
   const processBarcode = async (barcode) => {
@@ -195,8 +199,9 @@ export default function ScanProductScreen({ navigation, route }) {
       Alert.alert('Carrito vacío', 'Agrega productos para continuar');
       return;
     }
+
+    setSaleProcessing(true); // Mostrar el modal de "Guardando venta..."
     
-    setLoading(true);
     try {
       // Verificar stock antes de procesar
       for (const item of cart) {
@@ -206,7 +211,7 @@ export default function ScanProductScreen({ navigation, route }) {
         
         if (!productSnap.exists()) {
           Alert.alert('Error', `El producto ${item.name} ya no existe.`);
-          setLoading(false);
+          setSaleProcessing(false);
           return;
         }
         
@@ -214,7 +219,7 @@ export default function ScanProductScreen({ navigation, route }) {
         
         if (currentStock < item.quantity) {
           Alert.alert('Error', `Stock insuficiente para ${item.name}. Solo quedan ${currentStock} unidades.`);
-          setLoading(false);
+          setSaleProcessing(false);
           return;
         }
       }
@@ -233,11 +238,10 @@ export default function ScanProductScreen({ navigation, route }) {
         total: parseFloat(totalValue)
       };
       
-      console.log('Datos de venta a guardar:', saleData);
       
       // Guardar la venta
       const saleRef = await addDoc(collection(db, 'sales'), saleData);
-      console.log('Venta guardada con ID:', saleRef.id);
+      console.log('Venta guardada ');
       
       // Actualizar el stock de cada producto
       const updatePromises = cart.map(async (item) => {
@@ -247,8 +251,6 @@ export default function ScanProductScreen({ navigation, route }) {
         if (productSnap.exists()) {
           const currentStock = productSnap.data().stock;
           const newStock = Math.max(0, currentStock - item.quantity);
-          
-          console.log(`Actualizando stock de ${item.name}: ${currentStock} -> ${newStock}`);
           
           return updateDoc(productRef, {
             stock: newStock,
@@ -260,6 +262,7 @@ export default function ScanProductScreen({ navigation, route }) {
       await Promise.all(updatePromises);
       
       setCart([]);
+      setSaleProcessing(false); // Ocultar el modal de "Guardando venta..."
       Alert.alert(
         'Venta realizada',
         'La venta se ha registrado correctamente.',
@@ -267,9 +270,8 @@ export default function ScanProductScreen({ navigation, route }) {
       );
     } catch (error) {
       console.error('Error al procesar la venta:', error);
+      setSaleProcessing(false); // Ocultar el modal de "Guardando venta..."
       Alert.alert('Error', 'No se pudo completar la venta: ' + error.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -345,8 +347,9 @@ export default function ScanProductScreen({ navigation, route }) {
         // === VISTA DE ESCANEO ===
         <View style={styles.scanContainer}>
           <CameraView
+            ref={cameraRef}
             style={styles.camera}
-            onBarcodeScanned={scanning && !loading && !alertActive ? handleBarCodeScanned : undefined}
+            onBarcodeScanned={handleBarCodeScanned}
             barcodeScannerSettings={{
               barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
               interval: 3000,
@@ -475,7 +478,7 @@ export default function ScanProductScreen({ navigation, route }) {
             style={styles.finishButton}
             onPress={handleCheckout}
           >
-            <Text style={styles.finishButtonText}>Finalizar Venta</Text>
+            <Text style={styles.finishButtonText}>Finalizar Ventita</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -583,6 +586,21 @@ export default function ScanProductScreen({ navigation, route }) {
             >
               <Text style={styles.closeModalButtonText}>Cerrar</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL: GUARDANDO VENTA... */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={saleProcessing}
+        onRequestClose={() => {}} // Evitar que se cierre al tocar fuera
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.processingModalContent}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.processingText}>Guardando venta...</Text>
           </View>
         </View>
       </Modal>
@@ -856,5 +874,17 @@ const styles = StyleSheet.create({
   closeModalButtonText: {
     color: 'white',
     fontWeight: 'bold',
+  },
+   // Modal de "Guardando venta..."
+   processingModalContent: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 22,
+    borderRadius: 4,
+    alignItems: 'center',
+  },
+  processingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: 'white',
   },
 });

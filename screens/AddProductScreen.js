@@ -13,7 +13,7 @@ import {
   Modal,
   FlatList
 } from 'react-native';
-import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { Camera, CameraView } from 'expo-camera';
 import { colors } from '../theme/colors';
@@ -94,8 +94,8 @@ export default function AddProductScreen({ navigation }) {
   };
 
   const validateForm = () => {
-    if (!barcode || !name || !price || !stock || !category) {
-      Alert.alert('Error', 'Todos los campos son obligatorios');
+    if (!name || !price || !stock || !category) {
+      Alert.alert('Error', 'El nombre, precio, stock y categoría son obligatorios');
       return false;
     }
     return true;
@@ -106,57 +106,63 @@ export default function AddProductScreen({ navigation }) {
     
     setLoading(true);
     try {
-      const productsRef = collection(db, 'products');
-      const q = query(
-        productsRef, 
-        where('barcode', '==', barcode),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const querySnapshot = await getDocs(q);
-      
-      if (!querySnapshot.empty) {
-        Alert.alert(
-          'Producto existente',
-          'Ya existe un producto con este código de barras. ¿Deseas actualizar su stock?',
-          [
-            {
-              text: 'Cancelar',
-              style: 'cancel',
-              onPress: () => setLoading(false)
-            },
-            {
-              text: 'Actualizar',
-              onPress: async () => {
-                setLoading(false);
-                navigation.navigate('EditProduct', { productId: querySnapshot.docs[0].id });
-              }
-            }
-          ]
+      // Si hay un código de barras, verificar si ya existe
+      if (barcode) {
+        const productsRef = collection(db, 'products');
+        const q = query(
+          productsRef, 
+          where('barcode', '==', barcode),
+          where('userId', '==', auth.currentUser.uid)
         );
-        return;
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          Alert.alert(
+            'Producto existente',
+            'Ya existe un producto con este código de barras. ¿Deseas actualizar su stock?',
+            [
+              {
+                text: 'Cancelar',
+                style: 'cancel',
+                onPress: () => setLoading(false)
+              },
+              {
+                text: 'Actualizar',
+                onPress: async () => {
+                  setLoading(false);
+                  navigation.navigate('EditProduct', { productId: querySnapshot.docs[0].id });
+                }
+              }
+            ]
+          );
+          return;
+        }
       }
       
+      // Crear el producto con o sin código de barras
       const productData = {
-        barcode,
         name,
         price: parseFloat(price),
+        basePrice: basePrice ? parseFloat(basePrice) : parseFloat(price),
         stock: parseInt(stock),
         category,
-        expiryDate,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        userId: auth.currentUser.uid
+        barcode: barcode || '', // Guardar cadena vacía si no hay código
+        userId: auth.currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        expiryDate: expiryDate || null
       };
       
       await addDoc(collection(db, 'products'), productData);
       
       Alert.alert(
-        'Producto agregado',
-        'El producto se ha agregado correctamente',
+        'Éxito',
+        'Producto agregado correctamente',
         [
           {
             text: 'OK',
             onPress: () => {
+              // Limpiar el formulario
               setBarcode('');
               setName('');
               setPrice('');
@@ -165,6 +171,8 @@ export default function AddProductScreen({ navigation }) {
               setStock('');
               setCategory('');
               setExpiryDate(new Date());
+              
+              // Navegar de vuelta a la lista de productos
               navigation.navigate('ProductList');
             }
           }
@@ -172,7 +180,7 @@ export default function AddProductScreen({ navigation }) {
       );
     } catch (error) {
       console.error('Error al agregar producto:', error);
-      Alert.alert('Error', 'No se pudo agregar el producto. Inténtalo de nuevo.');
+      Alert.alert('Error', 'No se pudo agregar el producto');
     } finally {
       setLoading(false);
     }
@@ -256,7 +264,7 @@ export default function AddProductScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Código de Barras</Text>
+          <Text style={styles.label}>Código de Barras (opcional)</Text>
           <View style={styles.barcodeContainer}>
             <TextInput
               style={styles.barcodeInput}
@@ -265,7 +273,7 @@ export default function AddProductScreen({ navigation }) {
               placeholder="Escanea o ingresa el código"
               keyboardType="numeric"
             />
-            <TouchableOpacity
+            <TouchableOpacity 
               style={styles.scanButton}
               onPress={() => setScanning(true)}
             >

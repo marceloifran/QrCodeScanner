@@ -13,12 +13,13 @@ import {
   Modal,
   FlatList
 } from 'react-native';
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
-import { categories } from '../constants/categories';
+import { categories, getCategoryName } from '../constants/categories';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { Camera, CameraView } from 'expo-camera'; // Import Camera components
 
 export default function EditProductScreen({ navigation, route }) {
   const { productId } = route.params;
@@ -37,10 +38,19 @@ export default function EditProductScreen({ navigation, route }) {
   const [expiryDate, setExpiryDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  const [scanning, setScanning] = useState(false); // State for scanning mode
+  const [hasPermission, setHasPermission] = useState(null);  // State for camera permission
+
   const commonPercentages = ['10', '15', '20', '25', '30', '35', '40', '50'];
 
   useEffect(() => {
     loadProduct();
+
+    // Request camera permissions on component mount
+    (async () => {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+    })();
   }, []);
 
   const loadProduct = async () => {
@@ -60,12 +70,12 @@ export default function EditProductScreen({ navigation, route }) {
       };
       
       setProduct(productData);
-      setName(productData.name);
+      setName(productData.name || '');
       setBarcode(productData.barcode || '');
       setPrice(productData.price ? productData.price.toString() : '');
       setBasePrice(productData.price ? productData.price.toString() : '');
       setStock(productData.stock ? productData.stock.toString() : '');
-      setCategory(productData.category);
+      setCategory(productData.category || '');
       setExpiryDate(productData.expiryDate ? new Date(productData.expiryDate.seconds * 1000) : null);
     } catch (error) {
       console.error('Error al cargar el producto:', error);
@@ -85,7 +95,7 @@ export default function EditProductScreen({ navigation, route }) {
 
   const validateForm = () => {
     if (!name || !price || !stock || !category) {
-      Alert.alert('Error', 'Todos los campos son obligatorios');
+      Alert.alert('Error', 'El nombre, precio, stock y categoría son obligatorios');
       return false;
     }
     if (isNaN(price) || parseFloat(price) <= 0) {
@@ -102,28 +112,56 @@ export default function EditProductScreen({ navigation, route }) {
   const handleUpdateProduct = async () => {
     if (!validateForm()) return;
     
-    setSaving(true);
+    setLoading(true);
     try {
-      await updateDoc(doc(db, 'products', product.id), {
+      if (barcode !== product.barcode) {
+        const productsRef = collection(db, 'products');
+        const q = query(
+          productsRef, 
+          where('barcode', '==', barcode),
+          where('userId', '==', auth.currentUser.uid),
+          where('__name__', '!=', productId)
+        );
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          Alert.alert(
+            'Código de barras duplicado',
+            'Ya existe otro producto con este código de barras.',
+            [{ text: 'OK' }]
+          );
+          setLoading(false);
+          return;
+        }
+      }
+      
+      const productRef = doc(db, 'products', productId);
+      await updateDoc(productRef, {
         name,
         barcode,
         price: parseFloat(price),
+        basePrice: basePrice ? parseFloat(basePrice) : parseFloat(price),
         stock: parseInt(stock),
         category,
-        expiryDate: expiryDate,
-        updatedAt: new Date()
+        updatedAt: serverTimestamp(),
+        expiryDate: expiryDate || null
       });
       
       Alert.alert(
-        'Éxito', 
-        'Producto actualizado correctamente',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+        'Producto actualizado',
+        'El producto se ha actualizado correctamente',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack()
+          }
+        ]
       );
     } catch (error) {
       console.error('Error al actualizar producto:', error);
       Alert.alert('Error', 'No se pudo actualizar el producto');
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
@@ -243,6 +281,61 @@ export default function EditProductScreen({ navigation, route }) {
     }
   };
 
+  // Barcode Scanning Logic
+  const handleBarCodeScanned = ({ type, data }) => {
+    console.log(`Código escaneado: ${data} (Tipo: ${type})`);
+    setBarcode(data);
+    setScanning(false);
+  };
+
+  // Render methods for different permission states
+  if (hasPermission === null) {
+    return (
+      <View style={styles.cameraPermissionContainer}>
+        <Text>Solicitando permiso de cámara...</Text>
+      </View>
+    );
+  }
+
+  if (hasPermission === false) {
+    return (
+      <View style={styles.cameraPermissionContainer}>
+        <Text>No hay acceso a la cámara</Text>
+      </View>
+    );
+  }
+
+  const renderBarcodeScanner = () => (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={scanning}
+      onRequestClose={() => setScanning(false)}
+    >
+      <View style={StyleSheet.absoluteFill}>
+        <CameraView
+          style={StyleSheet.absoluteFillObject}
+          onBarcodeScanned={handleBarCodeScanned}
+          cameraType="back"
+          flashMode="auto"
+        >
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerTarget}>
+              <View style={styles.scanLine} />
+            </View>
+            <Text style={styles.scannerText}>Apunta al código de barras</Text>
+            <TouchableOpacity
+              style={styles.cancelScanButton}
+              onPress={() => setScanning(false)}
+            >
+              <Text style={styles.cancelScanButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </CameraView>
+      </View>
+    </Modal>
+  );
+
   if (loading && !name) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -251,16 +344,31 @@ export default function EditProductScreen({ navigation, route }) {
     );
   }
 
+  // Encontrar el nombre de la categoría
+  const categoryName = getCategoryName(category);
+
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container}>
+      <View style={styles.scrollContent}>
         <View style={styles.formContainer}>
-          <Text style={styles.label}>Código de barras</Text>
-          <TextInput
-            style={styles.input}
-            value={barcode}
-            editable={false}
-          />
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Código de barras</Text>
+            <View style={styles.barcodeContainer}>
+              <TextInput
+                style={styles.barcodeInput}
+                value={barcode}
+                onChangeText={setBarcode}
+                placeholder="Código de barras (opcional)"
+                keyboardType="numeric"
+              />
+              <TouchableOpacity 
+                style={styles.scanButton}
+                onPress={() => setScanning(true)} // Open scanner modal
+              >
+                <Ionicons name="barcode-outline" size={24} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          </View>
           
           <TextInput
             style={styles.input}
@@ -269,7 +377,7 @@ export default function EditProductScreen({ navigation, route }) {
             onChangeText={setName}
           />
 
-          <Text style={styles.label}>Categoría</Text>
+<Text style={styles.label}>Categoría</Text>
           <TouchableOpacity
             style={styles.categorySelector}
             onPress={() => setShowCategoryModal(true)}
@@ -278,12 +386,23 @@ export default function EditProductScreen({ navigation, route }) {
               styles.categoryText,
               !category && styles.categoryPlaceholder
             ]}>
-              {category ? 
-                categories.find(cat => cat.id === category)?.name : 
-                'Seleccionar categoría'
-              }
+              <Text>{categoryName}</Text> {/* Wrap categoryName with <Text> */}
             </Text>
             <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
+          </TouchableOpacity>
+
+          <Text style={styles.label}>Fecha de vencimiento (opcional)</Text>
+          <TouchableOpacity
+            style={styles.dateSelector}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={[
+              styles.dateText,
+              !expiryDate && styles.datePlaceholder
+            ]}>
+              <Text>{expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha de vencimiento (opcional)'}</Text> {/* Wrap conditional string */}
+            </Text>
+            <Ionicons name="calendar-outline" size={24} color={colors.text.secondary} />
           </TouchableOpacity>
           
           <Text style={styles.label}>Precio</Text>
@@ -377,10 +496,22 @@ export default function EditProductScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         </View>
-      </ScrollView>
+
+        {/* Mostrar el código de barras como texto e icono */}
+        {barcode && (
+          <View style={styles.barcodeContainer}>
+            <View style={styles.barcodeContent}>
+              <Text style={styles.barcodeTitle}>Código de barras</Text>
+              <Text style={styles.barcodeValue}>{barcode}</Text>
+              <Ionicons name="barcode-outline" size={60} color={colors.text.secondary} style={styles.barcodeIcon} />
+            </View>
+          </View>
+        )}
+      </View>
 
       <CategoryModal />
-    </View>
+      {renderBarcodeScanner()} {/* Render the Barcode Scanner Modal */}
+    </ScrollView>
   );
 }
 
@@ -575,4 +706,86 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-}); 
+  formGroup: {
+    marginBottom: 20,
+  },
+  barcodeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 5,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  barcodeContent: {
+    alignItems: 'center',
+  },
+  barcodeTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text.primary,
+    marginBottom: 10,
+  },
+  barcodeValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 15,
+  },
+  barcodeIcon: {
+    marginVertical: 10,
+  },
+  barcodeInput: {
+    flex: 1,
+    height: 40,
+    color: colors.text.primary,
+  },
+  scanButton: {
+    padding: 10,
+  },
+  // Styles for Barcode Scanner Overlay
+  scannerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scannerTarget: {
+    width: 300,
+    height: 100,
+    borderWidth: 2,
+    borderColor: 'white',
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scanLine: {
+    height: 2,
+    width: '90%',
+    backgroundColor: 'red',
+  },
+  scannerText: {
+    color: 'white',
+    fontSize: 16,
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  cancelScanButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+  },
+  cancelScanButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  cameraPermissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+});

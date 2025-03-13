@@ -1,24 +1,18 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
+import { Ionicons } from '@expo/vector-icons';
 
 // Categorías predefinidas para un supermercado/minimercado
 export const predefinedCategories = [
-  { id: 'bebidas', name: 'Bebidas', icon: 'cafe-outline' },
-  { id: 'lacteos', name: 'Lácteos', icon: 'nutrition-outline' },
-  { id: 'panaderia', name: 'Panadería', icon: 'pizza-outline' },
-  { id: 'carnes', name: 'Carnes', icon: 'fast-food-outline' },
-  { id: 'frutas', name: 'Frutas y Verduras', icon: 'leaf-outline' },
-  { id: 'congelados', name: 'Congelados', icon: 'snow-outline' },
-  { id: 'snacks', name: 'Snacks', icon: 'fast-food-outline' },
-  { id: 'dulces', name: 'Dulces', icon: 'ice-cream-outline' },
-  { id: 'almacen', name: 'Almacén', icon: 'basket-outline' },
-  { id: 'limpieza', name: 'Limpieza', icon: 'sparkles-outline' },
-  { id: 'higiene', name: 'Higiene Personal', icon: 'water-outline' },
-  { id: 'cigarrillos', name: 'Cigarrillos', icon: 'flame-outline' },
-  { id: 'bazar', name: 'Bazar', icon: 'home-outline' },
-  { id: 'papeleria', name: 'Papelería', icon: 'pencil-outline' },
-  { id: 'mascotas', name: 'Mascotas', icon: 'paw-outline' },
-  { id: 'otros', name: 'Otros', icon: 'grid-outline' }
+  { id: 'dairy', name: 'Lácteos', icon: 'nutrition-outline' },
+  { id: 'bakery', name: 'Panadería', icon: 'restaurant-outline' },
+  { id: 'meat', name: 'Carnes', icon: 'fast-food-outline' },
+  { id: 'produce', name: 'Frutas y Verduras', icon: 'leaf-outline' },
+  { id: 'beverages', name: 'Bebidas', icon: 'wine-outline' },
+  { id: 'cleaning', name: 'Limpieza', icon: 'sparkles-outline' },
+  { id: 'personal_care', name: 'Cuidado Personal', icon: 'body-outline' },
+  { id: 'snacks', name: 'Snacks', icon: 'pizza-outline' },
+  { id: 'other', name: 'Otros', icon: 'grid-outline' }
 ];
 
 // Categorías (incluirá las predefinidas y las personalizadas)
@@ -58,11 +52,11 @@ export const loadCustomCategories = async () => {
 // Función para obtener el nombre de una categoría por su ID
 export const getCategoryName = (categoryId) => {
   const category = predefinedCategories.find(cat => cat.id === categoryId);
-  return category ? category.name : 'Sin categoría';
+  return category ? category.name : categoryId;
 };
 
 // Función para obtener el icono de una categoría por su ID
 export const getCategoryIcon = (categoryId) => {
   const category = predefinedCategories.find(cat => cat.id === categoryId);
-  return category ? category.icon : 'help-circle-outline';
+  return category ? category.icon : 'grid-outline';
 }; 

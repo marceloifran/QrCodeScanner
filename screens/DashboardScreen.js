@@ -15,6 +15,7 @@ import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, Timesta
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { formatPrice } from '../utils/formatters';
+import { predefinedCategories } from '../constants/categories';
 
 export default function DashboardScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -134,13 +135,9 @@ export default function DashboardScreen({ navigation }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.welcomeText}>Bienvenido,</Text>
-          <Text style={styles.userName}>{stats.userName}</Text>
-          <Text style={styles.businessName}>{stats.businessName}</Text>
+          <Text style={styles.welcomeText}>Bienvenido</Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.profileButton}>
-          <Ionicons name="person-circle" size={40} color="white" />
-        </TouchableOpacity>
+     
       </View>
 
       <ScrollView 
@@ -183,7 +180,10 @@ export default function DashboardScreen({ navigation }) {
           
           <TouchableOpacity 
             style={styles.statCard}
-            onPress={() => navigation.navigate('Products', { screen: 'ProductList', params: { filter: 'lowStock' } })}
+            onPress={() => navigation.navigate('Products', { 
+              screen: 'ProductList', 
+              params: { filter: 'lowStock' } 
+            })}
           >
             <View style={[styles.iconCircle, { backgroundColor: '#FF9800' }]}>
               <Ionicons name="alert-circle-outline" size={24} color="white" />
@@ -218,7 +218,19 @@ export default function DashboardScreen({ navigation }) {
               <TouchableOpacity 
                 key={index}
                 style={styles.categoryCard}
-                onPress={() => navigation.navigate('Products', { screen: 'ProductList', params: { filter: 'category', category } })}
+                onPress={() => {
+                  // Buscar el ID de la categoría en predefinedCategories
+                  const categoryObj = predefinedCategories.find(cat => cat.name === category);
+                  const categoryId = categoryObj ? categoryObj.id : category;
+                  
+                  navigation.navigate('Products', { 
+                    screen: 'ProductList', 
+                    params: { 
+                      filter: 'category', 
+                      category: categoryId  // Pasar el ID en lugar del nombre
+                    } 
+                  });
+                }}
               >
                 <Text style={styles.categoryCount}>{count}</Text>
                 <Text style={styles.categoryName}>{category}</Text>
@@ -285,7 +297,10 @@ export default function DashboardScreen({ navigation }) {
           
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => navigation.navigate('Products', { screen: 'ProductList', params: { filter: 'lowStock' } })}
+            onPress={() => navigation.navigate('Products', { 
+              screen: 'ProductList', 
+              params: { filter: 'lowStock' } 
+            })}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: '#FF9800' }]}>
               <Ionicons name="alert-circle-outline" size={24} color="white" />
@@ -325,6 +340,9 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 14,
     color: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    textAlign: 'center',
   },
   userName: {
     fontSize: 20,
