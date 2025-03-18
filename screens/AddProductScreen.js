@@ -28,6 +28,7 @@ export default function AddProductScreen({ navigation }) {
   const [basePrice, setBasePrice] = useState('');   // Precio original ingresado
   const [selectedPercentage, setSelectedPercentage] = useState('');
   const [stock, setStock] = useState('');
+  const [lowStockThreshold, setLowStockThreshold] = useState('');
   const [category, setCategory] = useState('');
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -35,6 +36,7 @@ export default function AddProductScreen({ navigation }) {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [expiryDate, setExpiryDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [notifyExpiry, setNotifyExpiry] = useState(false);
 
   const commonPercentages = ['10', '15', '20', '25', '30', '35', '40', '50'];
 
@@ -147,10 +149,12 @@ export default function AddProductScreen({ navigation }) {
         stock: parseInt(stock),
         category,
         barcode: barcode || '', // Guardar cadena vacía si no hay código
+        lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold) : null,
         userId: auth.currentUser.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        expiryDate: expiryDate || null
+        expiryDate: expiryDate || null,
+        notifyExpiry: notifyExpiry,
       };
       
       await addDoc(collection(db, 'products'), productData);
@@ -169,8 +173,10 @@ export default function AddProductScreen({ navigation }) {
               setBasePrice('');
               setSelectedPercentage('');
               setStock('');
+              setLowStockThreshold('');
               setCategory('');
               setExpiryDate(new Date());
+              setNotifyExpiry(false);
               
               // Navegar de vuelta a la lista de productos
               navigation.navigate('ProductList');
@@ -350,6 +356,17 @@ export default function AddProductScreen({ navigation }) {
         </View>
         
         <View style={styles.formGroup}>
+          <Text style={styles.label}>Umbral de Stock Bajo (opcional)</Text>
+          <TextInput
+            style={styles.input}
+            value={lowStockThreshold}
+            onChangeText={setLowStockThreshold}
+            placeholder="Notificar cuando el stock sea menor a"
+            keyboardType="numeric"
+          />
+        </View>
+        
+        <View style={styles.formGroup}>
           <Text style={styles.label}>Categoría</Text>
           <TouchableOpacity
             style={styles.categorySelector}
@@ -375,6 +392,22 @@ export default function AddProductScreen({ navigation }) {
             </Text>
             <Ionicons name="calendar-outline" size={24} color={colors.text.secondary} />
           </TouchableOpacity>
+          
+          <View style={styles.notificationOption}>
+            <Text style={styles.notificationText}>Notificar cuando se acerque la fecha de vencimiento</Text>
+            <TouchableOpacity
+              style={[
+                styles.toggleButton,
+                notifyExpiry ? styles.toggleButtonActive : styles.toggleButtonInactive
+              ]}
+              onPress={() => setNotifyExpiry(!notifyExpiry)}
+            >
+              <View style={[
+                styles.toggleIndicator,
+                notifyExpiry ? styles.toggleIndicatorActive : styles.toggleIndicatorInactive
+              ]} />
+            </TouchableOpacity>
+          </View>
         </View>
         
         <TouchableOpacity
@@ -661,5 +694,41 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  notificationOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingVertical: 5,
+  },
+  notificationText: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  toggleButton: {
+    width: 50,
+    height: 26,
+    borderRadius: 13,
+    padding: 3,
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleButtonInactive: {
+    backgroundColor: '#e0e0e0',
+  },
+  toggleIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'white',
+  },
+  toggleIndicatorActive: {
+    marginLeft: 'auto',
+  },
+  toggleIndicatorInactive: {
+    marginLeft: 0,
   },
 });

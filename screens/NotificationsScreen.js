@@ -24,37 +24,38 @@ export default function NotificationsScreen({ navigation }) {
   const loadNotifications = async () => {
     setLoading(true);
     try {
-      // Obtener productos con stock bajo
+      // Obtener todos los productos del usuario
       const q = query(
         collection(db, 'products'),
-        where('userId', '==', auth.currentUser.uid),
-        where('stock', '<=', 5)
+        where('userId', '==', auth.currentUser.uid)
       );
       
       const querySnapshot = await getDocs(q);
       
-      // Crear notificaciones a partir de productos con stock bajo
-      const notificationsList = querySnapshot.docs.map(doc => {
-        const product = doc.data();
-        return {
-          id: doc.id,
-          title: 'Stock Bajo',
-          message: `El producto "${product.name}" tiene un stock de ${product.stock} unidades.`,
-          date: new Date(),
-          type: 'low_stock',
-          productId: doc.id
-        };
-      });
+      // Crear notificaciones para productos con stock por debajo del umbral personalizado
+      const notificationsList = querySnapshot.docs
+        .map(doc => {
+          const product = doc.data();
+          const threshold = product.lowStockThreshold || 5; // Usar umbral personalizado o 5 por defecto
+          
+          // Solo crear notificación si el stock está por debajo del umbral
+          if (product.stock <= threshold) {
+            return {
+              id: doc.id,
+              title: 'Stock Bajo',
+              message: `El producto "${product.name}" tiene un stock de ${product.stock} unidades (umbral: ${threshold}).`,
+              date: new Date(),
+              type: 'low_stock',
+              productId: doc.id,
+              threshold: threshold,
+              stock: product.stock
+            };
+          }
+          return null;
+        })
+        .filter(notification => notification !== null); // Filtrar notificaciones nulas
       
-      // Filtrar notificaciones más antiguas de 24 horas
-      const oneDayAgo = new Date();
-      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-      
-      const filteredNotifications = notificationsList.filter(
-        notification => notification.date >= oneDayAgo
-      );
-      
-      setNotifications(filteredNotifications);
+      setNotifications(notificationsList);
     } catch (error) {
       console.error('Error al cargar notificaciones:', error);
       Alert.alert('Error', 'No se pudieron cargar las notificaciones');
@@ -77,7 +78,7 @@ export default function NotificationsScreen({ navigation }) {
         <Ionicons 
           name="alert-circle" 
           size={24} 
-          color={colors.error} 
+          color={item.stock === 0 ? colors.error : colors.warning} 
         />
       </View>
       <View style={styles.notificationContent}>

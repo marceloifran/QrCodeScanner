@@ -1,314 +1,248 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
-  Text, 
   View, 
+  Text, 
   TouchableOpacity, 
-  ScrollView,
+  ScrollView, 
   ActivityIndicator,
   RefreshControl,
-  Image
+  Alert
 } from 'react-native';
-import { signOut } from 'firebase/auth';
-import { auth, db } from '../firebase/config';
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db, auth } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { formatPrice } from '../utils/formatters';
-import { predefinedCategories } from '../constants/categories';
+import { getCategoryName, getCategoryIcon } from '../constants/categories';
 
 export default function DashboardScreen({ navigation }) {
+  const [recentSales, setRecentSales] = useState([]);
+  const [lowStockProducts, setLowStockProducts] = useState([]);
+  const [categoryCounts, setCategoryCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({
     totalProducts: 0,
-    totalSales: 0,
-    totalRevenue: 0,
-    lowStockProducts: 0,
-    inventoryValue: 0,
-    categoryCounts: {},
-    recentSales: [],
-    userName: '',
-    userEmail: '',
-    businessName: '',
+    lowStockCount: 0,
+    totalSales: 0
   });
-
+  
   useEffect(() => {
     loadDashboardData();
   }, []);
-
+  
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const userId = auth.currentUser.uid;
-      
-      // Cargar datos del usuario
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      const userData = userDoc.data() || {};
-      
       // Cargar productos
       const productsQuery = query(
         collection(db, 'products'),
-        where('userId', '==', userId)
+        where('userId', '==', auth.currentUser.uid)
       );
       const productsSnapshot = await getDocs(productsQuery);
-      const products = productsSnapshot.docs.map(doc => ({
+      const productsData = productsSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       
-      // Calcular estadísticas de productos
-      const totalProducts = products.length;
-      const lowStockProducts = products.filter(p => p.stock <= 5).length;
-      const inventoryValue = products.reduce((sum, product) => sum + (product.price * product.stock), 0);
+      // Contar productos totales
+      const totalProducts = productsData.length;
       
-      // Contar productos por categoría
-      const categoryCounts = {};
-      products.forEach(product => {
-        const category = product.category || 'Sin categoría';
-        categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+      // Filtrar productos con stock bajo
+      const lowStockData = productsData.filter(product => {
+        const threshold = product.lowStockThreshold || 5;
+        return product.stock <= threshold;
       });
       
-      // Cargar ventas
+      // Contar productos con stock bajo
+      const lowStockCount = lowStockData.length;
+      
+      // Contar productos por categoría
+      const categoryCountsData = {};
+      productsData.forEach(product => {
+        const category = product.category || 'sin-categoria';
+        categoryCountsData[category] = (categoryCountsData[category] || 0) + 1;
+      });
+      
+      setCategoryCounts(categoryCountsData);
+      setLowStockProducts(lowStockData.slice(0, 5));
+      
+      // Cargar TODAS las ventas (sin filtrar por fecha)
       const salesQuery = query(
         collection(db, 'sales'),
-        where('userId', '==', userId),
-        orderBy('date', 'desc')
+        where('userId', '==', auth.currentUser.uid)
       );
       const salesSnapshot = await getDocs(salesQuery);
-      const sales = salesSnapshot.docs.map(doc => ({
+      const allSalesData = salesSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         date: doc.data().date?.toDate() || new Date()
       }));
       
-      // Calcular estadísticas de ventas
-      const totalSales = sales.length;
-      const totalRevenue = sales.reduce((sum, sale) => sum + (sale.total || 0), 0);
+      // Ordenar ventas por fecha para mostrar las más recientes
+      const sortedSales = [...allSalesData].sort((a, b) => b.date - a.date);
       
-      // Obtener ventas recientes
-      const recentSales = sales.slice(0, 5);
+      // Contar ventas totales (todas, no solo las recientes)
+      const totalSales = allSalesData.length;
       
+      setRecentSales(sortedSales.slice(0, 5)); // Solo mostrar las 5 más recientes
+      
+      // Actualizar estadísticas
       setStats({
         totalProducts,
-        totalSales,
-        totalRevenue,
-        lowStockProducts,
-        inventoryValue,
-        categoryCounts,
-        recentSales,
-        userName: userData.name || 'Usuario',
-        userEmail: auth.currentUser.email,
-        businessName: userData.businessName || 'Mi Negocio',
+        lowStockCount,
+        totalSales
       });
+      
     } catch (error) {
       console.error('Error al cargar datos del dashboard:', error);
+      Alert.alert('Error', 'No se pudieron cargar los datos');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
-
-  const onRefresh = () => {
+  
+  const handleRefresh = () => {
     setRefreshing(true);
     loadDashboardData();
   };
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error('Error al cerrar sesión:', error);
-    }
+  
+  // Funciones de navegación
+  const goToProducts = () => navigation.navigate('ProductList');
+  const goToLowStock = () => navigation.navigate('ProductList', { filter: 'lowStock' });
+  const goToSales = () => navigation.navigate('SalesHistory');
+  const goToNewSale = () => navigation.navigate('ScanProductScreen');
+  const goToScanStock = () => navigation.navigate('ScanForStock');
+  
+  // Función corregida para navegar a productos filtrados por categoría
+  const goToCategory = (category) => {
+    // Usar el parámetro correcto que la pantalla ProductList espera
+    navigation.navigate('ProductList', { filter: 'category', category: category });
   };
-
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Cargando información...</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Bienvenido</Text>
-        </View>
-     
-      </View>
-
       <ScrollView 
         style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+          />
         }
       >
-        {/* Resumen principal */}
-        <View style={styles.summaryContainer}>
-          <TouchableOpacity 
-            style={[styles.summaryCard, styles.revenueCard]}
-            onPress={() => navigation.navigate('Sales', { screen: 'SalesHistory' })}
-          >
-            <Text style={styles.summaryValue}>{formatPrice(stats.totalRevenue)}</Text>
-            <Text style={styles.summaryLabel}>Ingresos Totales</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.summaryCard, styles.inventoryCard]}
-            onPress={() => navigation.navigate('Products', { screen: 'ProductList' })}
-          >
-            <Text style={styles.summaryValue}>{formatPrice(stats.inventoryValue)}</Text>
-            <Text style={styles.summaryLabel}>Valor del Inventario</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Estadísticas rápidas */}
+        {/* Tarjetas de estadísticas */}
         <View style={styles.statsContainer}>
           <TouchableOpacity 
             style={styles.statCard}
-            onPress={() => navigation.navigate('Products', { screen: 'ProductList' })}
+            onPress={goToProducts}
           >
             <View style={[styles.iconCircle, { backgroundColor: '#4CAF50' }]}>
               <Ionicons name="cube-outline" size={24} color="white" />
             </View>
-            <Text style={styles.statValue}>{stats.totalProducts}</Text>
+            <Text style={styles.statNumber}>{stats.totalProducts}</Text>
             <Text style={styles.statLabel}>Productos</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.statCard}
-            onPress={() => navigation.navigate('Products', { 
-              screen: 'ProductList', 
-              params: { filter: 'lowStock' } 
-            })}
+            onPress={goToLowStock}
           >
             <View style={[styles.iconCircle, { backgroundColor: '#FF9800' }]}>
-              <Ionicons name="alert-circle-outline" size={24} color="white" />
+              <Ionicons name="alert-outline" size={24} color="white" />
             </View>
-            <Text style={styles.statValue}>{stats.lowStockProducts}</Text>
+            <Text style={styles.statNumber}>{stats.lowStockCount}</Text>
             <Text style={styles.statLabel}>Stock Bajo</Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.statCard}
-            onPress={() => navigation.navigate('Sales', { screen: 'SalesHistory' })}
+            onPress={goToSales}
           >
             <View style={[styles.iconCircle, { backgroundColor: '#2196F3' }]}>
               <Ionicons name="cart-outline" size={24} color="white" />
             </View>
-            <Text style={styles.statValue}>{stats.totalSales}</Text>
+            <Text style={styles.statNumber}>{stats.totalSales}</Text>
             <Text style={styles.statLabel}>Ventas</Text>
           </TouchableOpacity>
         </View>
-
+        
         {/* Categorías */}
-        <View style={styles.sectionContainer}>
+        <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Categorías</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Products', { screen: 'ProductList' })}>
-              <Text style={styles.seeAllText}>Ver todas</Text>
+            <TouchableOpacity onPress={goToProducts}>
+              <Text style={styles.viewAllText}>Ver todas</Text>
             </TouchableOpacity>
           </View>
           
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesContainer}>
-            {Object.entries(stats.categoryCounts).map(([category, count], index) => (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesScroll}>
+            {Object.keys(categoryCounts).map(category => (
               <TouchableOpacity 
-                key={index}
+                key={category}
                 style={styles.categoryCard}
-                onPress={() => {
-                  // Buscar el ID de la categoría en predefinedCategories
-                  const categoryObj = predefinedCategories.find(cat => cat.name === category);
-                  const categoryId = categoryObj ? categoryObj.id : category;
-                  
-                  navigation.navigate('Products', { 
-                    screen: 'ProductList', 
-                    params: { 
-                      filter: 'category', 
-                      category: categoryId  // Pasar el ID en lugar del nombre
-                    } 
-                  });
-                }}
+                onPress={() => goToCategory(category)}
               >
-                <Text style={styles.categoryCount}>{count}</Text>
-                <Text style={styles.categoryName}>{category}</Text>
+                <Text style={styles.categoryCount}>{categoryCounts[category]}</Text>
+                <Text style={styles.categoryName} numberOfLines={1}>
+                  {getCategoryName(category)}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
         </View>
-
+        
         {/* Ventas recientes */}
-        <View style={styles.sectionContainer}>
+        <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Ventas Recientes</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Sales', { screen: 'SalesHistory' })}>
-              <Text style={styles.seeAllText}>Ver todas</Text>
+            <TouchableOpacity onPress={goToSales}>
+              <Text style={styles.viewAllText}>Ver todas</Text>
             </TouchableOpacity>
           </View>
           
-          {stats.recentSales.length > 0 ? (
-            stats.recentSales.map((sale, index) => (
-              <View key={index} style={styles.saleCard}>
+          {recentSales.length > 0 ? (
+            recentSales.map(sale => (
+              <View key={sale.id} style={styles.saleItem}>
                 <View style={styles.saleInfo}>
                   <Text style={styles.saleDate}>
-                    {sale.date.toLocaleDateString('es-AR', { 
-                      day: '2-digit', 
-                      month: '2-digit', 
-                      year: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
+                    {sale.date.toLocaleDateString()} {sale.date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                   </Text>
                   <Text style={styles.saleItems}>
                     {sale.items?.length || 0} productos
                   </Text>
                 </View>
-                <Text style={styles.saleTotal}>{formatPrice(sale.total)}</Text>
+                <Text style={styles.saleTotal}>
+                  {formatPrice(sale.total || 0)}
+                </Text>
               </View>
             ))
           ) : (
             <Text style={styles.emptyText}>No hay ventas recientes</Text>
           )}
         </View>
-
-        {/* Acciones rápidas */}
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('Scan')}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#4CAF50' }]}>
-              <Ionicons name="scan-outline" size={24} color="white" />
-            </View>
-            <Text style={styles.actionText}>Nueva Venta</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('Products', { screen: 'AddProduct' })}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#2196F3' }]}>
-              <Ionicons name="add-outline" size={24} color="white" />
-            </View>
-            <Text style={styles.actionText}>Agregar Producto</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('Products', { 
-              screen: 'ProductList', 
-              params: { filter: 'lowStock' } 
-            })}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#FF9800' }]}>
-              <Ionicons name="alert-circle-outline" size={24} color="white" />
-            </View>
-            <Text style={styles.actionText}>Stock Bajo</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
+      
+      {/* Botones flotantes */}
+      <TouchableOpacity 
+        style={[styles.floatingButton, styles.newSaleButton]}
+        onPress={goToNewSale}
+      >
+        <Ionicons name="cart-outline" size={24} color="white" />
+        <Text style={styles.floatingButtonText}>Venta</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={[styles.floatingButton, styles.scanStockButton]}
+        onPress={goToScanStock}
+      >
+        <Ionicons name="barcode-outline" size={24} color="white" />
+        <Text style={styles.floatingButtonText}>Stock</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -316,95 +250,31 @@ export default function DashboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: colors.primary,
-  },
-  welcomeText: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    textAlign: 'center',
-  },
-  userName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  businessName: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 2,
-  },
-  profileButton: {
-    padding: 5,
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
   },
-  summaryContainer: {
-    flexDirection: 'row',
-    padding: 15,
-  },
-  summaryCard: {
-    flex: 1,
-    padding: 15,
-    borderRadius: 10,
-    marginHorizontal: 5,
-    alignItems: 'center',
-  },
-  revenueCard: {
-    backgroundColor: colors.primary,
-  },
-  inventoryCard: {
-    backgroundColor: '#2196F3',
-  },
-  summaryValue: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: 'white',
-    marginBottom: 5,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    color: 'white',
-    opacity: 0.9,
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 100, // Espacio para los botones flotantes
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: 15,
+    marginBottom: 20,
   },
   statCard: {
-    flex: 1,
-    alignItems: 'center',
+    width: '31%',
     backgroundColor: 'white',
-    padding: 15,
     borderRadius: 10,
-    marginHorizontal: 5,
-    elevation: 2,
+    padding: 15,
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   iconCircle: {
     width: 50,
@@ -414,85 +284,84 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  statValue: {
-    fontSize: 18,
+  statNumber: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.text.primary,
+    marginBottom: 5,
   },
   statLabel: {
     fontSize: 14,
-    color: '#666',
+    color: colors.text.secondary,
   },
-  sectionContainer: {
+  section: {
     backgroundColor: 'white',
     borderRadius: 10,
-    margin: 15,
-    padding: 15,
-    elevation: 2,
+    padding: 16,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#333',
+    color: colors.text.primary,
   },
-  seeAllText: {
-    fontSize: 14,
+  viewAllText: {
     color: colors.primary,
+    fontWeight: '500',
   },
-  categoriesContainer: {
+  categoriesScroll: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   categoryCard: {
-    width: 100,
-    height: 100,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    padding: 15,
-    marginRight: 10,
-    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 12,
+    marginRight: 12,
+    minWidth: 80,
     alignItems: 'center',
   },
   categoryCount: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.primary,
+    marginBottom: 4,
   },
   categoryName: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 12,
+    color: colors.text.secondary,
     textAlign: 'center',
-    marginTop: 5,
   },
-  saleCard: {
+  saleItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    paddingVertical: 10,
   },
   saleInfo: {
     flex: 1,
   },
   saleDate: {
     fontSize: 14,
-    color: '#333',
+    color: colors.text.secondary,
+    marginBottom: 5,
   },
   saleItems: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 2,
+    fontSize: 14,
+    color: colors.text.secondary,
   },
   saleTotal: {
     fontSize: 16,
@@ -500,34 +369,36 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#666',
     textAlign: 'center',
-    padding: 15,
+    color: colors.text.tertiary,
+    padding: 10,
   },
-  actionsContainer: {
+  floatingButton: {
+    position: 'absolute',
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 15,
-    marginBottom: 20,
-  },
-  actionButton: {
-    flex: 1,
     alignItems: 'center',
-    marginHorizontal: 5,
-  },
-  actionIconContainer: {
-    width: 60,
-    height: 60,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 30,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
-  actionText: {
-    fontSize: 12,
-    color: '#333',
-    textAlign: 'center',
+  newSaleButton: {
+    bottom: 80,
+    right: 20,
+    backgroundColor: colors.primary,
+  },
+  scanStockButton: {
+    bottom: 20,
+    right: 20,
+    backgroundColor: colors.accent,
+  },
+  floatingButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 }); 

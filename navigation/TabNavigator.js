@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
@@ -36,15 +36,13 @@ export default function TabNavigator() {
         ...doc.data()
       }));
       
-      let count = 0;
+      // Contar productos con stock por debajo del umbral personalizado
+      const lowStockCount = productsList.filter(product => {
+        const threshold = product.lowStockThreshold || 5; // Usar umbral personalizado o 5 por defecto
+        return product.stock <= threshold;
+      }).length;
       
-      productsList.forEach(product => {
-        if (product.stock <= 5) {
-          count++;
-        }
-      });
-      
-      setNotificationCount(count);
+      setNotificationCount(lowStockCount);
     } catch (error) {
       console.error('Error verificando notificaciones:', error);
     }
@@ -84,31 +82,32 @@ export default function TabNavigator() {
           if (route.name === 'Dashboard') {
             return (
               <View style={styles.notificationContainer}>
-                <Ionicons 
-                  name="notifications-outline" 
-                  size={24} 
-                  color="#fff" 
-                  style={{marginRight: 15}}
-                  onPress={() => navigation.navigate('Notifications')}
-                />
-                {notificationCount > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{notificationCount}</Text>
-                  </View>
-                )}
+                <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
+                  <Ionicons 
+                    name="notifications-outline" 
+                    size={24} 
+                    color="#fff" 
+                    style={{marginRight: 15}}
+                  />
+                  {notificationCount > 0 && (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>{notificationCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
             );
           }
           return null;
-        }
+        },
       })}
     >
       <Tab.Screen 
         name="Dashboard" 
         component={DashboardScreen} 
         options={{ 
-          title: 'Panel',
-          headerTitle: 'Panel de Control'
+          title: 'Inicio',
+          headerTitle: 'Mi Negocio'
         }} 
       />
       <Tab.Screen 
@@ -116,15 +115,15 @@ export default function TabNavigator() {
         component={ProductListScreen} 
         options={{ 
           title: 'Productos',
-          headerTitle: 'Lista de Productos'
+          headerTitle: 'Mis Productos'
         }} 
       />
       <Tab.Screen 
         name="ScanProduct" 
         component={ScanProductScreen} 
         options={{ 
-          title: 'Nueva Venta',
-          headerTitle: 'Nueva Venta'
+          title: 'Escanear',
+          headerShown: false
         }} 
       />
       <Tab.Screen 

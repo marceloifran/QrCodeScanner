@@ -29,21 +29,6 @@ export default function ProfileScreen({ navigation }) {
         </View>
         
         <View style={styles.optionsContainer}>
-          {/* Sección de Configuración de Notificaciones */}
-          <TouchableOpacity
-            style={styles.optionItem}
-            onPress={() => navigation.navigate('NotificationSettings')}
-          >
-            <View style={styles.optionIconContainer}>
-              <Ionicons name="notifications-outline" size={24} color={colors.primary} />
-            </View>
-            <View style={styles.optionTextContainer}>
-              <Text style={styles.optionTitle}>Configuración de Notificaciones</Text>
-              <Text style={styles.optionDescription}>Gestiona tus preferencias de notificaciones</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-          
           {/* Sección de Cerrar Sesión */}
           <TouchableOpacity
             style={[styles.optionItem, styles.signOutOption]}

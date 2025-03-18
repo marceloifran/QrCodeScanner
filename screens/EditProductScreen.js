@@ -1,85 +1,101 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TextInput, 
-  TouchableOpacity, 
+import React, { useState, useEffect } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Modal,
-  FlatList
-} from 'react-native';
-import { doc, getDoc, updateDoc, deleteDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../firebase/config';
-import { colors } from '../theme/colors';
-import { categories, getCategoryName } from '../constants/categories';
-import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { Camera, CameraView } from 'expo-camera'; // Import Camera components
+  FlatList,
+} from "react-native";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  serverTimestamp,
+} from "firebase/firestore";
+import { db, auth } from "../firebase/config";
+import { colors } from "../theme/colors";
+import { categories, getCategoryName } from "../constants/categories";
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { Camera, CameraView } from "expo-camera"; // Import Camera components
 
 export default function EditProductScreen({ navigation, route }) {
   const { productId } = route.params;
-  
+
   const [product, setProduct] = useState(null);
-  const [name, setName] = useState('');
-  const [barcode, setBarcode] = useState('');
-  const [price, setPrice] = useState('');
-  const [basePrice, setBasePrice] = useState('');
-  const [selectedPercentage, setSelectedPercentage] = useState('');
-  const [stock, setStock] = useState('');
-  const [category, setCategory] = useState('');
+  const [name, setName] = useState("");
+  const [barcode, setBarcode] = useState("");
+  const [price, setPrice] = useState("");
+  const [basePrice, setBasePrice] = useState("");
+  const [selectedPercentage, setSelectedPercentage] = useState("");
+  const [stock, setStock] = useState("");
+  const [lowStockThreshold, setLowStockThreshold] = useState("5");
+  const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [expiryDate, setExpiryDate] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [notifyExpiry, setNotifyExpiry] = useState(false);
 
-  const [scanning, setScanning] = useState(false); // State for scanning mode
-  const [hasPermission, setHasPermission] = useState(null);  // State for camera permission
+  const [scanning, setScanning] = useState(false);
+  const [hasPermission, setHasPermission] = useState(null);
 
-  const commonPercentages = ['10', '15', '20', '25', '30', '35', '40', '50'];
+  const commonPercentages = ["10", "15", "20", "25", "30", "35", "40", "50"];
 
   useEffect(() => {
     loadProduct();
 
-    // Request camera permissions on component mount
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
+      setHasPermission(status === "granted");
     })();
   }, []);
 
   const loadProduct = async () => {
     setLoading(true);
     try {
-      const productDoc = await getDoc(doc(db, 'products', productId));
-      
+      const productDoc = await getDoc(doc(db, "products", productId));
+
       if (!productDoc.exists()) {
-        Alert.alert('Error', 'El producto no existe');
+        Alert.alert("Error", "El producto no existe");
         navigation.goBack();
         return;
       }
-      
+
       const productData = {
         id: productDoc.id,
-        ...productDoc.data()
+        ...productDoc.data(),
       };
-      
+
       setProduct(productData);
-      setName(productData.name || '');
-      setBarcode(productData.barcode || '');
-      setPrice(productData.price ? productData.price.toString() : '');
-      setBasePrice(productData.price ? productData.price.toString() : '');
-      setStock(productData.stock ? productData.stock.toString() : '');
-      setCategory(productData.category || '');
-      setExpiryDate(productData.expiryDate ? new Date(productData.expiryDate.seconds * 1000) : null);
+      setName(productData.name || "");
+      setBarcode(productData.barcode || "");
+      setPrice(productData.price ? productData.price.toString() : "");
+      setBasePrice(productData.price ? productData.price.toString() : "");
+      setStock(productData.stock ? productData.stock.toString() : "");
+      setLowStockThreshold(productData.lowStockThreshold ? productData.lowStockThreshold.toString() : "5");
+      setCategory(productData.category || "");
+      setExpiryDate(
+        productData.expiryDate
+          ? new Date(productData.expiryDate.seconds * 1000)
+          : null
+      );
+      setNotifyExpiry(productData.notifyExpiry || false);
     } catch (error) {
-      console.error('Error al cargar el producto:', error);
-      Alert.alert('Error', 'No se pudo cargar el producto');
+      Alert.alert("Error", "No se pudo cargar el producto");
       navigation.goBack();
     } finally {
       setLoading(false);
@@ -88,22 +104,28 @@ export default function EditProductScreen({ navigation, route }) {
 
   useEffect(() => {
     if (product && product.userId !== auth.currentUser.uid) {
-      Alert.alert('Error', 'No tienes permiso para editar este producto');
+      Alert.alert("Error", "No tienes permiso para editar este producto");
       navigation.goBack();
     }
   }, []);
 
   const validateForm = () => {
     if (!name || !price || !stock || !category) {
-      Alert.alert('Error', 'El nombre, precio, stock y categoría son obligatorios');
+      Alert.alert(
+        "Error",
+        "El nombre, precio, stock y categoría son obligatorios"
+      );
       return false;
     }
     if (isNaN(price) || parseFloat(price) <= 0) {
-      Alert.alert('Error', 'El precio debe ser un número válido mayor a 0');
+      Alert.alert("Error", "El precio debe ser un número válido mayor a 0");
       return false;
     }
     if (isNaN(stock) || parseInt(stock) < 0) {
-      Alert.alert('Error', 'El stock debe ser un número válido mayor o igual a 0');
+      Alert.alert(
+        "Error",
+        "El stock debe ser un número válido mayor o igual a 0"
+      );
       return false;
     }
     return true;
@@ -111,83 +133,60 @@ export default function EditProductScreen({ navigation, route }) {
 
   const handleUpdateProduct = async () => {
     if (!validateForm()) return;
-    
+
     setLoading(true);
     try {
       if (barcode !== product.barcode) {
-        const productsRef = collection(db, 'products');
+        const productsRef = collection(db, "products");
         const q = query(
-          productsRef, 
-          where('barcode', '==', barcode),
-          where('userId', '==', auth.currentUser.uid),
-          where('__name__', '!=', productId)
+          productsRef,
+          where("barcode", "==", barcode),
+          where("userId", "==", auth.currentUser.uid),
+          where("__name__", "!=", productId)
         );
         const querySnapshot = await getDocs(q);
-        
+
         if (!querySnapshot.empty) {
           Alert.alert(
-            'Código de barras duplicado',
-            'Ya existe otro producto con este código de barras.',
-            [{ text: 'OK' }]
+            "Código de barras duplicado",
+            "Ya existe otro producto con este código de barras.",
+            [{ text: "OK" }]
           );
           setLoading(false);
           return;
         }
       }
-      
-      const productRef = doc(db, 'products', productId);
+
+      const productRef = doc(db, "products", productId);
       await updateDoc(productRef, {
         name,
         barcode,
         price: parseFloat(price),
         basePrice: basePrice ? parseFloat(basePrice) : parseFloat(price),
         stock: parseInt(stock),
+        lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold) : null,
         category,
         updatedAt: serverTimestamp(),
-        expiryDate: expiryDate || null
+        expiryDate: expiryDate || null,
+        notifyExpiry: notifyExpiry,
       });
-      
+
       Alert.alert(
-        'Producto actualizado',
-        'El producto se ha actualizado correctamente',
+        "Producto actualizado",
+        "El producto se ha actualizado correctamente",
         [
           {
-            text: 'OK',
-            onPress: () => navigation.goBack()
-          }
+            text: "OK",
+            onPress: () => navigation.goBack(),
+          },
         ]
       );
     } catch (error) {
-      console.error('Error al actualizar producto:', error);
-      Alert.alert('Error', 'No se pudo actualizar el producto');
+      console.error("Error al actualizar producto:", error);
+      Alert.alert("Error", "No se pudo actualizar el producto");
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDeleteProduct = () => {
-    Alert.alert(
-      'Confirmar eliminación',
-      '¿Estás seguro de que deseas eliminar este producto?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            setSaving(true);
-            try {
-              await deleteDoc(doc(db, 'products', product.id));
-              navigation.goBack();
-            } catch (error) {
-              console.error('Error al eliminar producto:', error);
-              Alert.alert('Error', 'No se pudo eliminar el producto');
-              setSaving(false);
-            }
-          }
-        }
-      ]
-    );
   };
 
   const CategoryModal = () => (
@@ -207,27 +206,33 @@ export default function EditProductScreen({ navigation, route }) {
                 key={item.id}
                 style={[
                   styles.categoryItem,
-                  category === item.id && styles.categoryItemSelected
+                  category === item.id && styles.categoryItemSelected,
                 ]}
                 onPress={() => {
                   setCategory(item.id);
                   setShowCategoryModal(false);
                 }}
               >
-                <Ionicons 
-                  name={item.icon} 
-                  size={24} 
-                  color={category === item.id ? colors.primary : colors.text.secondary} 
+                <Ionicons
+                  name={item.icon}
+                  size={24}
+                  color={
+                    category === item.id
+                      ? colors.primary
+                      : colors.text.secondary
+                  }
                 />
-                <Text style={[
-                  styles.categoryItemText,
-                  category === item.id && styles.categoryItemTextSelected
-                ]}>
+                <Text
+                  style={[
+                    styles.categoryItemText,
+                    category === item.id && styles.categoryItemTextSelected,
+                  ]}
+                >
                   {item.name}
                 </Text>
               </TouchableOpacity>
             )}
-            keyExtractor={item => item.id}
+            keyExtractor={(item) => item.id}
           />
           <TouchableOpacity
             style={styles.modalCloseButton}
@@ -249,20 +254,20 @@ export default function EditProductScreen({ navigation, route }) {
 
   const applyPercentage = (percentage) => {
     if (!price) return;
-    
+
     if (selectedPercentage === percentage) {
       resetPrice();
       return;
     }
-    
+
     const baseValue = parseFloat(basePrice || price);
     if (isNaN(baseValue)) return;
-    
+
     const percentValue = parseFloat(percentage);
     if (isNaN(percentValue)) return;
-    
+
     const newPrice = baseValue * (1 + percentValue / 100);
-    
+
     setPrice(Math.round(newPrice).toString());
     setSelectedPercentage(percentage);
   };
@@ -270,7 +275,7 @@ export default function EditProductScreen({ navigation, route }) {
   const resetPrice = () => {
     if (basePrice) {
       setPrice(basePrice);
-      setSelectedPercentage('');
+      setSelectedPercentage("");
     }
   };
 
@@ -281,14 +286,15 @@ export default function EditProductScreen({ navigation, route }) {
     }
   };
 
-  // Barcode Scanning Logic
-  const handleBarCodeScanned = ({ type, data }) => {
-    console.log(`Código escaneado: ${data} (Tipo: ${type})`);
-    setBarcode(data);
-    setScanning(false);
+  const handleScanBarcode = () => {
+    setScanning(true);
   };
 
-  // Render methods for different permission states
+  const handleCategorySelect = (selectedCategory) => {
+    setCategory(selectedCategory);
+    setShowCategoryModal(false);
+  };
+
   if (hasPermission === null) {
     return (
       <View style={styles.cameraPermissionContainer}>
@@ -305,19 +311,25 @@ export default function EditProductScreen({ navigation, route }) {
     );
   }
 
-  const renderBarcodeScanner = () => (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={scanning}
-      onRequestClose={() => setScanning(false)}
-    >
-      <View style={StyleSheet.absoluteFill}>
+  const renderBarcodeScanner = () =>
+    scanning && (
+      <View style={StyleSheet.absoluteFillObject}>
         <CameraView
           style={StyleSheet.absoluteFillObject}
-          onBarcodeScanned={handleBarCodeScanned}
-          cameraType="back"
-          flashMode="auto"
+          onBarcodeScanned={(data) => {
+            setBarcode(data.data);
+            setScanning(false);
+          }}
+          barcodeScannerSettings={{
+            barcodeTypes: [
+              "ean13",
+              "ean8",
+              "upc_e",
+              "upc_a",
+              "code39",
+              "code128",
+            ],
+          }}
         >
           <View style={styles.scannerOverlay}>
             <View style={styles.scannerTarget}>
@@ -333,19 +345,18 @@ export default function EditProductScreen({ navigation, route }) {
           </View>
         </CameraView>
       </View>
-    </Modal>
-  );
+    );
 
   if (loading && !name) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Cargando producto...</Text>
       </View>
     );
   }
 
-  // Encontrar el nombre de la categoría
-  const categoryName = getCategoryName(category);
+  const categoryName = getCategoryName(category) || "Sin categoría";
 
   return (
     <ScrollView style={styles.container}>
@@ -361,50 +372,87 @@ export default function EditProductScreen({ navigation, route }) {
                 placeholder="Código de barras (opcional)"
                 keyboardType="numeric"
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.scanButton}
-                onPress={() => setScanning(true)} // Open scanner modal
+                onPress={handleScanBarcode}
               >
-                <Ionicons name="barcode-outline" size={24} color={colors.primary} />
+                <Ionicons
+                  name="barcode-outline"
+                  size={24}
+                  color={colors.primary}
+                />
               </TouchableOpacity>
             </View>
           </View>
-          
           <TextInput
             style={styles.input}
             placeholder="Nombre del producto"
             value={name}
             onChangeText={setName}
           />
-
-<Text style={styles.label}>Categoría</Text>
-          <TouchableOpacity
-            style={styles.categorySelector}
-            onPress={() => setShowCategoryModal(true)}
-          >
-            <Text style={[
-              styles.categoryText,
-              !category && styles.categoryPlaceholder
-            ]}>
-              <Text>{categoryName}</Text> {/* Wrap categoryName with <Text> */}
-            </Text>
-            <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
-          </TouchableOpacity>
-
-          <Text style={styles.label}>Fecha de vencimiento (opcional)</Text>
-          <TouchableOpacity
-            style={styles.dateSelector}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={[
-              styles.dateText,
-              !expiryDate && styles.datePlaceholder
-            ]}>
-              <Text>{expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha de vencimiento (opcional)'}</Text> {/* Wrap conditional string */}
-            </Text>
-            <Ionicons name="calendar-outline" size={24} color={colors.text.secondary} />
-          </TouchableOpacity>
-          
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Categoría</Text>
+            <TouchableOpacity
+              style={styles.categorySelector}
+              onPress={() => setShowCategoryModal(true)}
+            >
+              <Text
+                style={[
+                  styles.categoryText,
+                  !category && styles.categoryPlaceholder,
+                ]}
+              >
+                {categoryName}
+              </Text>
+              <Ionicons
+                name="chevron-down"
+                size={24}
+                color={colors.text.secondary}
+              />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Fecha de vencimiento (opcional)</Text>
+            <TouchableOpacity
+              style={styles.dateSelector}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Text
+                style={[styles.dateText, !expiryDate && styles.datePlaceholder]}
+              >
+                {expiryDate
+                  ? expiryDate.toLocaleDateString()
+                  : "Seleccionar fecha de vencimiento (opcional)"}
+              </Text>
+              <Ionicons
+                name="calendar-outline"
+                size={24}
+                color={colors.text.secondary}
+              />
+            </TouchableOpacity>
+            
+            {expiryDate && (
+              <View style={styles.notificationOption}>
+                <Text style={styles.notificationText}>
+                  Notificar cuando se acerque la fecha de vencimiento
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.toggleButton,
+                    notifyExpiry ? styles.toggleButtonActive : styles.toggleButtonInactive
+                  ]}
+                  onPress={() => setNotifyExpiry(!notifyExpiry)}
+                >
+                  <View
+                    style={[
+                      styles.toggleIndicator,
+                      notifyExpiry ? styles.toggleIndicatorActive : styles.toggleIndicatorInactive
+                    ]}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
           <Text style={styles.label}>Precio</Text>
           <TextInput
             style={styles.input}
@@ -413,32 +461,38 @@ export default function EditProductScreen({ navigation, route }) {
             onChangeText={handlePriceChange}
             keyboardType="decimal-pad"
           />
-          
           {price ? (
             <>
               <View style={styles.percentageHeader}>
-                <Text style={styles.sublabel}>Aplicar porcentaje de ganancia:</Text>
+                <Text style={styles.sublabel}>
+                  Aplicar porcentaje de ganancia:
+                </Text>
                 {selectedPercentage ? (
-                  <TouchableOpacity style={styles.resetButton} onPress={resetPrice}>
+                  <TouchableOpacity
+                    style={styles.resetButton}
+                    onPress={resetPrice}
+                  >
                     <Text style={styles.resetButtonText}>Quitar</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
-              
+
               <View style={styles.percentageButtonsContainer}>
-                {commonPercentages.map(percent => (
+                {commonPercentages.map((percent) => (
                   <TouchableOpacity
                     key={percent}
                     style={[
                       styles.percentageButton,
-                      selectedPercentage === percent && styles.selectedPercentageButton
+                      selectedPercentage === percent &&
+                        styles.selectedPercentageButton,
                     ]}
                     onPress={() => applyPercentage(percent)}
                   >
                     <Text
                       style={[
                         styles.percentageButtonText,
-                        selectedPercentage === percent && styles.selectedPercentageButtonText
+                        selectedPercentage === percent &&
+                          styles.selectedPercentageButtonText,
                       ]}
                     >
                       {percent}%
@@ -448,7 +502,7 @@ export default function EditProductScreen({ navigation, route }) {
               </View>
             </>
           ) : null}
-          
+
           <Text style={styles.label}>Stock</Text>
           <TextInput
             style={styles.input}
@@ -457,21 +511,21 @@ export default function EditProductScreen({ navigation, route }) {
             onChangeText={setStock}
             keyboardType="numeric"
           />
-          
-          <Text style={styles.label}>Fecha de vencimiento (opcional)</Text>
-          <TouchableOpacity
-            style={styles.dateSelector}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={[
-              styles.dateText,
-              !expiryDate && styles.datePlaceholder
-            ]}>
-              {expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha de vencimiento (opcional)'}
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Umbral de Stock Bajo</Text>
+            <TextInput
+              style={styles.input}
+              value={lowStockThreshold}
+              onChangeText={setLowStockThreshold}
+              placeholder="5"
+              keyboardType="numeric"
+            />
+            <Text style={styles.helperText}>
+              Notificar cuando el stock sea menor o igual a este valor
             </Text>
-            <Ionicons name="calendar-outline" size={24} color={colors.text.secondary} />
-          </TouchableOpacity>
-          
+          </View>
+
           {showDatePicker && (
             <DateTimePicker
               value={expiryDate || new Date()}
@@ -481,10 +535,14 @@ export default function EditProductScreen({ navigation, route }) {
               minimumDate={new Date()}
             />
           )}
-          
           <View style={styles.buttonContainer}>
             <TouchableOpacity
-              style={[styles.button, styles.saveButton, { flex: 1 }, loading && { opacity: 0.7 }]}
+              style={[
+                styles.button,
+                styles.saveButton,
+                { flex: 1 },
+                loading && { opacity: 0.7 },
+              ]}
               onPress={handleUpdateProduct}
               disabled={loading}
             >
@@ -496,21 +554,9 @@ export default function EditProductScreen({ navigation, route }) {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Mostrar el código de barras como texto e icono */}
-        {barcode && (
-          <View style={styles.barcodeContainer}>
-            <View style={styles.barcodeContent}>
-              <Text style={styles.barcodeTitle}>Código de barras</Text>
-              <Text style={styles.barcodeValue}>{barcode}</Text>
-              <Ionicons name="barcode-outline" size={60} color={colors.text.secondary} style={styles.barcodeIcon} />
-            </View>
-          </View>
-        )}
       </View>
-
       <CategoryModal />
-      {renderBarcodeScanner()} {/* Render the Barcode Scanner Modal */}
+      {renderBarcodeScanner()}
     </ScrollView>
   );
 }
@@ -523,9 +569,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
-  formContainer: {
-    // Add any necessary styles for the form container
-  },
+  formContainer: {},
   label: {
     fontSize: 14,
     color: colors.text.secondary,
@@ -537,7 +581,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   input: {
-    width: '100%',
+    width: "100%",
     height: 50,
     backgroundColor: colors.background,
     borderRadius: 5,
@@ -548,9 +592,9 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   categorySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: colors.background,
     borderRadius: 5,
     marginBottom: 15,
@@ -567,8 +611,8 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 20,
   },
   button: {
@@ -576,8 +620,8 @@ const styles = StyleSheet.create({
     height: 50,
     backgroundColor: colors.primary,
     borderRadius: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 10,
   },
   saveButton: {
@@ -585,8 +629,8 @@ const styles = StyleSheet.create({
     height: 50,
     backgroundColor: colors.primary,
     borderRadius: 5,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginLeft: 10,
   },
   disabledButton: {
@@ -595,30 +639,30 @@ const styles = StyleSheet.create({
   buttonText: {
     color: colors.background,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   modalContainer: {
     flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   modalContent: {
     backgroundColor: colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: '80%',
+    maxHeight: "80%",
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.text.primary,
     marginBottom: 20,
-    textAlign: 'center',
+    textAlign: "center",
   },
   categoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -633,24 +677,24 @@ const styles = StyleSheet.create({
   },
   categoryItemTextSelected: {
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   modalCloseButton: {
     marginTop: 20,
     padding: 15,
     backgroundColor: colors.primary,
     borderRadius: 10,
-    alignItems: 'center',
+    alignItems: "center",
   },
   modalCloseButtonText: {
     color: colors.background,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   dateSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: colors.background,
     borderRadius: 5,
     marginBottom: 15,
@@ -667,28 +711,28 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   percentageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
   resetButton: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 15,
   },
   resetButtonText: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
   },
   percentageButtonsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginBottom: 15,
   },
   percentageButton: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 20,
@@ -700,18 +744,18 @@ const styles = StyleSheet.create({
   },
   percentageButtonText: {
     fontSize: 14,
-    color: '#333',
+    color: "#333",
   },
   selectedPercentageButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
   },
   formGroup: {
     marginBottom: 20,
   },
   barcodeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.background,
     borderRadius: 5,
     padding: 10,
@@ -719,17 +763,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   barcodeContent: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   barcodeTitle: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
     color: colors.text.primary,
     marginBottom: 10,
   },
   barcodeValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: colors.text.primary,
     marginBottom: 15,
   },
@@ -744,29 +788,28 @@ const styles = StyleSheet.create({
   scanButton: {
     padding: 10,
   },
-  // Styles for Barcode Scanner Overlay
   scannerOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   scannerTarget: {
     width: 300,
     height: 100,
     borderWidth: 2,
-    borderColor: 'white',
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: "white",
+    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
   },
   scanLine: {
     height: 2,
-    width: '90%',
-    backgroundColor: 'red',
+    width: "90%",
+    backgroundColor: "red",
   },
   scannerText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
     marginTop: 20,
     marginBottom: 30,
@@ -778,14 +821,75 @@ const styles = StyleSheet.create({
     borderRadius: 25,
   },
   cancelScanButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   cameraPermissionContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     padding: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 20,
+    color: colors.text.primary,
+  },
+  scannerContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  camera: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  notificationOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingVertical: 5,
+  },
+  notificationText: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    flex: 1,
+  },
+  toggleButton: {
+    width: 50,
+    height: 26,
+    borderRadius: 13,
+    padding: 3,
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleButtonInactive: {
+    backgroundColor: '#e0e0e0',
+  },
+  toggleIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'white',
+  },
+  toggleIndicatorActive: {
+    marginLeft: 'auto',
+  },
+  toggleIndicatorInactive: {
+    marginLeft: 0,
+  },
+  helperText: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginTop: 5,
+    marginBottom: 15,
   },
 });

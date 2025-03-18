@@ -8,20 +8,23 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
-  Modal
+  Modal,
+  Animated
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { collection, query, where, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
-
-// Si usas tu archivo "colors.js", ajusta la ruta de import
-// import { colors } from '../theme/colors';
+import { colors } from '../theme/colors';
 
 // Helper para formatear dinero
 function formatMoney(value) {
-  return value.toLocaleString('es-AR', {
-    minimumFractionDigits: 2,
+  // Redondear a 2 decimales y luego verificar si tiene decimales
+  const roundedValue = Math.round(value * 100) / 100;
+  const hasDecimals = roundedValue % 1 !== 0;
+  
+  return roundedValue.toLocaleString('es-AR', {
+    minimumFractionDigits: hasDecimals ? 2 : 0,
     maximumFractionDigits: 2
   });
 }
@@ -41,14 +44,32 @@ export default function ScanProductScreen({ navigation, route }) {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [saleProcessing, setSaleProcessing] = useState(false); // Nuevo estado
-
+  const [cameraReady, setCameraReady] = useState(false);
+  
+  // Obtener parámetros de la ruta
+  const returnTo = route.params?.returnTo;
+  
   const cameraRef = useRef(null);
+  
+  // Animación para la línea de escaneo
+  const scanLineAnimation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
+    
+    // Iniciar la animación de la línea de escaneo
+    startScanLineAnimation();
+    
+    // Limpiar al desmontar
+    return () => {
+      // Detener cualquier proceso en curso
+      setScanning(false);
+      setLoading(false);
+      setAlertActive(false);
+    };
   }, []);
 
   // Calcula el total cada vez que cambia el carrito
@@ -70,17 +91,46 @@ export default function ScanProductScreen({ navigation, route }) {
     }
   }, [route.params?.selectedProduct]);
 
-  // Escaneo del código de barras
+  // Configurar opciones de navegación
+  useEffect(() => {
+    navigation.setOptions({
+      headerShown: false,
+      title: ''
+    });
+  }, [navigation]);
+
+  // Función para animar la línea de escaneo
+  const startScanLineAnimation = () => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineAnimation, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLineAnimation, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  };
+
+  // Manejar el escaneo de códigos de barras
   const handleBarCodeScanned = ({ type, data }) => {
-    if (scanning && !loading && !alertActive) { // Solo escanear si está en modo escaneo y no está cargando o mostrando alerta
+    if (scanning && !loading && !alertActive && cameraReady) {
       setScanning(false);
-      setLoading(true);
       processBarcode(data);
     }
   };
 
   const processBarcode = async (barcode) => {
     try {
+      // Evitar procesamiento si ya hay una alerta activa
+      if (alertActive) return;
+      
+      setLoading(true);
       const productsQuery = query(
         collection(db, 'products'), 
         where('barcode', '==', barcode),
@@ -90,12 +140,30 @@ export default function ScanProductScreen({ navigation, route }) {
       
       if (querySnapshot.empty) {
         // Producto no encontrado
-        setAlertActive(true);
-        setTimeout(() => {
-          setLoading(false);
-          setScanning(true);
-          setAlertActive(false);
-        }, 1000);
+        setAlertActive(true); // Marcar que hay una alerta activa
+        Alert.alert(
+          "Producto no encontrado",
+          "¿Deseas agregar un nuevo producto con este código de barras?",
+          [
+            {
+              text: "No",
+              onPress: () => {
+                setLoading(false);
+                setAlertActive(false);
+                setScanning(true);
+              },
+              style: "cancel"
+            },
+            {
+              text: "Sí",
+              onPress: () => {
+                setLoading(false);
+                setAlertActive(false);
+                navigation.navigate('AddProduct', { barcode });
+              }
+            }
+          ]
+        );
       } else {
         // Producto encontrado
         const productData = querySnapshot.docs[0].data();
@@ -103,50 +171,30 @@ export default function ScanProductScreen({ navigation, route }) {
           id: querySnapshot.docs[0].id,
           ...productData
         };
-
-        // Verificar stock
-        if (product.stock <= 0) {
-          setLoading(false);
-          setScanning(true);
-          return;
-        }
-
-        // Ver si ya está en el carrito
-        const existingItemIndex = cart.findIndex(item => item.id === product.id);
-        if (existingItemIndex !== -1) {
-          // Aumentar cantidad en 1
-          const updatedCart = [...cart];
-          const newQuantity = updatedCart[existingItemIndex].quantity + 1;
-          if (newQuantity > product.stock) {
-            setLoading(false);
-            setScanning(true);
-            return;
-          }
-          updatedCart[existingItemIndex].quantity = newQuantity;
-          setCart(updatedCart);
-        } else {
-          // Agregar nuevo item
-          setCart([...cart, {
-            id: product.id,
-            barcode: product.barcode,
-            name: product.name,
-            price: product.price,
-            quantity: 1,
-            stock: product.stock
-          }]);
-        }
+        
         setLoading(false);
-        setScanning(true);
+        setAlertActive(false);
+        
+        // Si venimos de AddProduct, volvemos allí con el código de barras
+        if (returnTo === 'AddProduct') {
+          navigation.navigate('AddProduct', { barcode });
+        } else {
+          // De lo contrario, vamos al carrito con el producto
+          navigation.navigate('Cart', { product });
+        }
       }
     } catch (error) {
       console.error('Error al buscar producto:', error);
-      setAlertActive(true);
-      setTimeout(() => {
-        setLoading(false);
-        setScanning(true);
-        setAlertActive(false);
-      }, 1000);
+      Alert.alert('Error', 'Ocurrió un error al buscar el producto');
+      setLoading(false);
+      setScanning(true);
+      setAlertActive(false);
     }
+  };
+
+  // Manejar cuando la cámara está lista
+  const handleCameraReady = () => {
+    setCameraReady(true);
   };
 
   // Agregar producto con cantidad seleccionada (cuando se abre el modal)
@@ -318,23 +366,29 @@ export default function ScanProductScreen({ navigation, route }) {
     setCurrentQuantity(newQty.toString());
   };
 
+  // Volver a la pantalla anterior
+  const handleGoBack = () => {
+    navigation.goBack();
+  };
+
   // Si todavía no hay permisos de cámara
   if (hasPermission === null) {
     return (
-      <View style={styles.cameraPermissionContainer}>
-        <Text>Solicitando permiso de cámara...</Text>
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.text}>Solicitando permisos de cámara...</Text>
       </View>
     );
   }
   if (hasPermission === false) {
     return (
-      <View style={styles.cameraPermissionContainer}>
-        <Text>No hay acceso a la cámara</Text>
+      <View style={styles.container}>
+        <Text style={styles.text}>No se tiene acceso a la cámara</Text>
         <TouchableOpacity 
-          style={styles.permissionButton}
-          onPress={() => navigation.goBack()}
+          style={styles.button}
+          onPress={handleGoBack}
         >
-          <Text style={styles.permissionButtonText}>Volver</Text>
+          <Text style={styles.buttonText}>Volver</Text>
         </TouchableOpacity>
       </View>
     );
@@ -351,20 +405,40 @@ export default function ScanProductScreen({ navigation, route }) {
             style={styles.camera}
             onBarcodeScanned={handleBarCodeScanned}
             barcodeScannerSettings={{
-              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
+              barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'code93', 'upc_e'],
               interval: 3000,
             }}
             cameraType="back"
             flashMode="auto"
+            onCameraReady={handleCameraReady}
           >
             <View style={styles.overlay}>
-              <Text style={styles.scanText}>Escanea el código de barras</Text>
+              <TouchableOpacity 
+                style={styles.backButton}
+                onPress={handleGoBack}
+              >
+                <Ionicons name="arrow-back" size={24} color="white" />
+              </TouchableOpacity>
               <View style={styles.scanArea}>
-                <View style={styles.scanLine}></View>
+                <Animated.View 
+                  style={[
+                    styles.scanLine,
+                    {
+                      transform: [
+                        {
+                          translateY: scanLineAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 200]
+                          })
+                        }
+                      ]
+                    }
+                  ]}
+                />
               </View>
               {loading && (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#fff" />
+                  <ActivityIndicator size="large" color={colors.primary} />
                 </View>
               )}
 
@@ -478,7 +552,7 @@ export default function ScanProductScreen({ navigation, route }) {
             style={styles.finishButton}
             onPress={handleCheckout}
           >
-            <Text style={styles.finishButtonText}>Finalizar Ventita</Text>
+            <Text style={styles.finishButtonText}>Finalizar Venta</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -886,5 +960,12 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: 'white',
+  },
+  backButton: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    padding: 10,
+    zIndex: 10,
   },
 });
