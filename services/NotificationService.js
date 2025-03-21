@@ -1,7 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 
 // Configurar comportamiento de notificaciones
@@ -71,4 +71,47 @@ export async function sendLocalNotification(title, body, data = {}) {
     },
     trigger: null, // Inmediatamente
   });
+}
+
+export async function checkAndNotifyLowStock(product) {
+  if (!auth.currentUser) return;
+  
+  try {
+    const threshold = product.lowStockThreshold || 5;
+    
+    // Solo notificar si el stock está por debajo del umbral
+    if (product.stock <= threshold) {
+      // Verificar si ya se notificó este producto por stock bajo
+      const notificationRef = doc(db, 'notificationHistory', `${auth.currentUser.uid}_${product.id}_low_stock`);
+      const notificationDoc = await getDoc(notificationRef);
+      
+      // Si no hay registro de notificación previa, notificar y registrar
+      if (!notificationDoc.exists()) {
+        // Enviar notificación
+        await sendLocalNotification(
+          'Stock Bajo',
+          `El producto "${product.name}" tiene un stock de ${product.stock} unidades (umbral: ${threshold}).`,
+          { screen: 'EditProduct', productId: product.id }
+        );
+        
+        // Registrar que se envió la notificación
+        await setDoc(notificationRef, {
+          productId: product.id,
+          threshold: threshold,
+          notifiedAt: new Date(),
+          currentStock: product.stock
+        });
+      }
+    } else {
+      // Si el stock vuelve a estar por encima del umbral, eliminar el registro para permitir notificar de nuevo
+      const notificationRef = doc(db, 'notificationHistory', `${auth.currentUser.uid}_${product.id}_low_stock`);
+      const notificationDoc = await getDoc(notificationRef);
+      
+      if (notificationDoc.exists()) {
+        await deleteDoc(notificationRef);
+      }
+    }
+  } catch (error) {
+    console.error('Error al verificar o enviar notificación de stock bajo:', error);
+  }
 } 

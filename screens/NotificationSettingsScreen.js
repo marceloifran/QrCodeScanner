@@ -16,7 +16,6 @@ import { collection, query, getDocs, where, doc, setDoc, getDoc } from 'firebase
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
-import { getCategoryName, getCategoryIcon } from '../constants/categories';
 
 export default function NotificationSettingsScreen({ navigation }) {
   const [products, setProducts] = useState([]);

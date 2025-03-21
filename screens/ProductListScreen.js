@@ -11,13 +11,53 @@ import {
   RefreshControl,
   ScrollView
 } from 'react-native';
-import { collection, query, where, getDocs, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, doc, deleteDoc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { formatPrice } from '../utils/formatters';
-import { getCategoryName, getCategoryIcon, predefinedCategories } from '../constants/categories';
 import { useProducts } from '../hooks/useProducts';
+import { getCategoriesForIndustry } from '../utils/categoryUtils';
+
+// Función para obtener el nombre de la categoría a partir del ID
+const getCategoryName = (categoryId, categories) => {
+  const category = categories.find(cat => cat.id === categoryId);
+  return category ? category.name : 'Sin categoría';
+};
+
+// Función para obtener un icono para la categoría
+const getCategoryIcon = (categoryId) => {
+  // Iconos por defecto según el tipo de categoría
+  const defaultIcons = {
+    'general': 'cube-outline',
+    'offers': 'pricetag-outline',
+    'new': 'star-outline',
+    'popular': 'flame-outline',
+    'shirts': 'shirt-outline',
+    'pants': 'cut-outline',
+    'shoes': 'footsteps-outline',
+    'accessories': 'watch-outline',
+    'medications': 'medical-outline',
+    'vitamins': 'fitness-outline',
+    'dairy': 'nutrition-outline',
+    'meat': 'restaurant-outline',
+    'fruits': 'leaf-outline',
+    'beverages': 'wine-outline',
+    'smartphones': 'phone-portrait-outline',
+    'computers': 'laptop-outline',
+    'starters': 'restaurant-outline',
+    'desserts': 'ice-cream-outline',
+    'bread': 'fast-food-outline',
+    'tools': 'construct-outline',
+    'skincare': 'water-outline',
+    'makeup': 'color-palette-outline',
+    'fiction': 'book-outline',
+    'nonfiction': 'document-text-outline',
+    // Añadir más iconos según sea necesario
+  };
+  
+  return defaultIcons[categoryId] || 'cube-outline'; // Icono por defecto
+};
 
 export default function ProductListScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -26,10 +66,46 @@ export default function ProductListScreen({ navigation, route }) {
   const [zeroStockFilter, setZeroStockFilter] = useState(false);
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
+  const [categories, setCategories] = useState([]);
+  const [industryType, setIndustryType] = useState('general');
   
   const { products, loading, loadProducts } = useProducts();
   
   const isSelecting = route.params?.isSelecting || false;
+  
+  // Definir la función loadCategories dentro del componente
+  const loadCategories = async () => {
+    try {
+      // Primero intentamos cargar la industria del usuario
+      const businessInfoRef = doc(db, 'businessInfo', auth.currentUser.uid);
+      const businessInfoDoc = await getDoc(businessInfoRef);
+      
+      let userIndustry = 'general';
+      if (businessInfoDoc.exists()) {
+        userIndustry = businessInfoDoc.data().industry || 'general';
+        setIndustryType(userIndustry);
+      }
+      
+      // Obtenemos las categorías directamente de categoryUtils
+      const industryCategories = getCategoriesForIndustry(userIndustry);
+      console.log('ProductListScreen - Cargando categorías para industria:', userIndustry);
+      setCategories(industryCategories);
+      
+      // Resetear el filtro de categoría si la categoría seleccionada ya no existe
+      if (selectedCategory) {
+        const categoryExists = industryCategories.some(cat => cat.id === selectedCategory);
+        if (!categoryExists) {
+          console.log('La categoría seleccionada ya no existe, reseteando filtro');
+          setSelectedCategory(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error al cargar la industria:', error);
+      // En caso de error, usar categorías generales
+      const defaultCategories = getCategoriesForIndustry('general');
+      setCategories(defaultCategories);
+    }
+  };
   
   useEffect(() => {
     // Verificar si hay parámetros de navegación para filtros
@@ -47,25 +123,7 @@ export default function ProductListScreen({ navigation, route }) {
       
       // Filtro por categoría
       if (route.params.filter === 'category' && route.params.category) {
-        const categoryParam = route.params.category;
-        
-        // Verificar si es un ID o un nombre
-        const categoryById = predefinedCategories.find(cat => cat.id === categoryParam);
-        
-        if (categoryById) {
-          // Si es un ID, usarlo directamente
-          setSelectedCategory(categoryParam);
-        } else {
-          // Si es un nombre, buscar el ID correspondiente
-          const categoryByName = predefinedCategories.find(cat => cat.name === categoryParam);
-          if (categoryByName) {
-            setSelectedCategory(categoryByName.id);
-          } else {
-            // Si no se encuentra, podría ser una categoría personalizada
-            setSelectedCategory(categoryParam);
-          }
-        }
-        
+        setSelectedCategory(route.params.category);
         setLowStockFilter(false);
       }
     }
@@ -74,9 +132,18 @@ export default function ProductListScreen({ navigation, route }) {
   }, [route.params]);
   
   useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', loadProducts);
+    loadCategories();
+    
+    // Añadir un listener para cuando la pantalla recibe el foco
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('ProductListScreen recibió el foco - recargando categorías');
+      loadCategories();
+      loadProducts(); // También recargamos los productos
+    });
+    
+    // Limpiar el listener cuando el componente se desmonta
     return unsubscribe;
-  }, [navigation, loadProducts]);
+  }, [navigation]);
   
   useEffect(() => {
     if (products.length > 0) {
@@ -97,129 +164,92 @@ export default function ProductListScreen({ navigation, route }) {
         }
       });
       
-      
-      // Verificar si hay categorías en productos que no están en predefinedCategories
-      const productCategories = Object.keys(productsByCategory);
-      const predefinedCategoryIds = predefinedCategories.map(c => c.id);
-      
-      const missingCategories = productCategories.filter(cat => !predefinedCategoryIds.includes(cat));
-      if (missingCategories.length > 0) {
-      }
+      // Ya no necesitamos verificar categorías predefinidas
+      // Simplemente podemos usar las categorías que tenemos
     }
   }, [products]);
   
   const filteredProducts = useMemo(() => {
-    let result = [...products];
+    if (!products || products.length === 0) return [];
     
-    if (selectedCategory) {
-      // Intentar diferentes estrategias de filtrado
-      result = result.filter(product => {
-        // Coincidencia directa por ID
-        if (product.category === selectedCategory) {
-          return true;
-        }
-        
-        // Coincidencia por nombre (para casos donde se guarda el nombre en lugar del ID)
-        const categoryName = getCategoryName(selectedCategory);
-        if (product.category === categoryName) {
-          return true;
-        }
-        
-        // Coincidencia parcial (para casos de inconsistencia)
-        if (product.category && selectedCategory && 
-            (product.category.includes(selectedCategory) || 
-             selectedCategory.includes(product.category))) {
-          return true;
-        }
-        
+    return products.filter(product => {
+      // Filtro de búsqueda
+      if (searchQuery && !product.name.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
-      });
-    }
-    
-    if (lowStockFilter) {
-      result = result.filter(product => product.stock <= 5);
-    }
-    
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(product => 
-        product.name.toLowerCase().includes(query) || 
-        (product.barcode && product.barcode.includes(query)) ||
-        product.price.toString().includes(query)
-      );
-    }
-    
-    result.sort((a, b) => {
-      let valueA, valueB;
-      
-      switch (sortBy) {
-        case 'price':
-          valueA = a.price || 0;
-          valueB = b.price || 0;
-          break;
-        case 'stock':
-          valueA = a.stock || 0;
-          valueB = b.stock || 0;
-          break;
-        default: // name
-          valueA = a.name || '';
-          valueB = b.name || '';
-          break;
       }
       
-      if (typeof valueA === 'string') {
-        return sortOrder === 'asc' 
-          ? valueA.localeCompare(valueB) 
-          : valueB.localeCompare(valueA);
-      } else {
-        return sortOrder === 'asc' 
-          ? valueA - valueB 
-          : valueB - valueA;
+      // Filtro de stock bajo
+      if (lowStockFilter) {
+        const threshold = product.lowStockThreshold || 5;
+        if (product.stock > threshold) {
+          return false;
+        }
       }
+      
+      // Filtro de stock cero
+      if (zeroStockFilter && product.stock > 0) {
+        return false;
+      }
+      
+      // Filtro por categoría
+      if (selectedCategory) {
+        return product.category === selectedCategory;
+      }
+      
+      return true;
+    }).sort((a, b) => {
+      // Ordenamiento
+      let result = 0;
+      
+      if (sortBy === 'name') {
+        result = a.name.localeCompare(b.name);
+      } else if (sortBy === 'price') {
+        result = parseFloat(a.price) - parseFloat(b.price);
+      } else if (sortBy === 'stock') {
+        result = parseInt(a.stock) - parseInt(b.stock);
+      }
+      
+      return sortOrder === 'asc' ? result : -result;
     });
-    
-    return result;
-  }, [products, selectedCategory, lowStockFilter, searchQuery, sortBy, sortOrder]);
+  }, [products, selectedCategory, lowStockFilter, zeroStockFilter, searchQuery, sortBy, sortOrder]);
   
   const categoryCounts = useMemo(() => {
     const counts = {};
     
-    // Inicializar todas las categorías predefinidas con 0
-    predefinedCategories.forEach(cat => {
+    // Inicializar todas las categorías con 0
+    categories.forEach(cat => {
       counts[cat.id] = 0;
     });
     
     // Contar productos por categoría
     products.forEach(product => {
       if (product.category) {
-        // Verificar si la categoría existe en predefinedCategories
-        const categoryExists = predefinedCategories.some(cat => cat.id === product.category);
+        // Verificar si la categoría existe en las categorías cargadas
+        const categoryExists = categories.some(cat => cat.id === product.category);
         
         if (categoryExists) {
           // Si existe, incrementar el contador
           counts[product.category] = (counts[product.category] || 0) + 1;
-        } else {
-
         }
       }
     });
     
     return counts;
-  }, [products]);
+  }, [products, categories]);
   
   const categoryValues = useMemo(() => {
     const values = {};
     
-    // Inicializar todas las categorías predefinidas con 0
-    predefinedCategories.forEach(cat => {
+    // Inicializar todas las categorías con 0
+    categories.forEach(cat => {
       values[cat.id] = 0;
     });
     
     // Calcular valor monetario por categoría
     products.forEach(product => {
       if (product.category) {
-        // Verificar si la categoría existe en predefinedCategories
-        const categoryExists = predefinedCategories.some(cat => cat.id === product.category);
+        // Verificar si la categoría existe en las categorías cargadas
+        const categoryExists = categories.some(cat => cat.id === product.category);
         
         if (categoryExists) {
           // Sumar el valor del producto (precio * stock)
@@ -230,7 +260,7 @@ export default function ProductListScreen({ navigation, route }) {
     });
     
     return values;
-  }, [products]);
+  }, [products, categories]);
   
   const toggleSort = useCallback((field) => {
     if (sortBy === field) {
@@ -288,14 +318,14 @@ export default function ProductListScreen({ navigation, route }) {
   }, [loadProducts]);
   
   const renderItem = useCallback(({ item }) => {
+    const categoryName = getCategoryName(item.category, categories);
+    
     let stockColor = colors.success;
     if (item.stock <= 0) {
       stockColor = colors.error;
     } else if (item.stock <= 5) {
       stockColor = colors.warning;
     }
-    
-    const categoryIcon = getCategoryIcon(item.category);
     
     return (
       <View style={styles.productCard}>
@@ -305,7 +335,7 @@ export default function ProductListScreen({ navigation, route }) {
         >
           <View style={styles.productHeader}>
             <View style={[styles.categoryIconContainer, { backgroundColor: `${colors.primary}20` }]}>
-              <Ionicons name={categoryIcon} size={24} color={colors.primary} />
+              <Ionicons name={getCategoryIcon(item.category)} size={24} color={colors.primary} />
             </View>
             <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
           </View>
@@ -335,159 +365,149 @@ export default function ProductListScreen({ navigation, route }) {
         )}
       </View>
     );
-  }, [handleDeleteProduct, handleProductPress, isSelecting]);
+  }, [handleDeleteProduct, handleProductPress, isSelecting, categories]);
   
   const keyExtractor = useCallback((item) => item.id, []);
   
-  const renderSortHeader = () => (
-    <View style={styles.sortHeader}>
-      <TouchableOpacity 
-        style={[styles.sortButton, sortBy === 'name' && styles.sortButtonActive]} 
-        onPress={() => toggleSort('name')}
-      >
-        <Text style={styles.sortButtonText}>Nombre</Text>
-        {sortBy === 'name' && (
-          <Ionicons 
-            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
-            size={16} 
-            color={colors.primary} 
-          />
-        )}
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={[styles.sortButton, sortBy === 'price' && styles.sortButtonActive]} 
-        onPress={() => toggleSort('price')}
-      >
-        <Text style={styles.sortButtonText}>Precio</Text>
-        {sortBy === 'price' && (
-          <Ionicons 
-            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
-            size={16} 
-            color={colors.primary} 
-          />
-        )}
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={[styles.sortButton, sortBy === 'stock' && styles.sortButtonActive]} 
-        onPress={() => toggleSort('stock')}
-      >
-        <Text style={styles.sortButtonText}>Stock</Text>
-        {sortBy === 'stock' && (
-          <Ionicons 
-            name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
-            size={16} 
-            color={colors.primary} 
-          />
-        )}
-      </TouchableOpacity>
-    </View>
-  );
+  const renderSortHeader = () => {
+    return (
+      <View style={styles.sortHeader}>
+        <TouchableOpacity 
+          style={styles.sortButton}
+          onPress={() => {
+            if (sortBy === 'name') {
+              setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+            } else {
+              setSortBy('name');
+              setSortOrder('asc');
+            }
+          }}
+        >
+          <Text style={styles.sortButtonText}>Nombre</Text>
+          {sortBy === 'name' && (
+            <Ionicons 
+              name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+              size={18} 
+              color="#333" 
+            />
+          )}
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.sortButton}
+          onPress={() => {
+            if (sortBy === 'price') {
+              setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+            } else {
+              setSortBy('price');
+              setSortOrder('asc');
+            }
+          }}
+        >
+          <Text style={styles.sortButtonText}>Precio</Text>
+          {sortBy === 'price' && (
+            <Ionicons 
+              name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+              size={18} 
+              color="#333" 
+            />
+          )}
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.sortButton}
+          onPress={() => {
+            if (sortBy === 'stock') {
+              setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+            } else {
+              setSortBy('stock');
+              setSortOrder('asc');
+            }
+          }}
+        >
+          <Text style={styles.sortButtonText}>Stock</Text>
+          {sortBy === 'stock' && (
+            <Ionicons 
+              name={sortOrder === 'asc' ? 'chevron-up' : 'chevron-down'} 
+              size={18} 
+              color="#333" 
+            />
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  };
   
   const renderCategoryFilters = () => {
     return (
-      <View style={styles.filtersWrapper}>
+      <View style={styles.categoriesWrapper}>
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersContainer}
+          style={styles.categoriesContainer}
+          contentContainerStyle={styles.categoriesContent}
         >
           <TouchableOpacity
             style={[
-              styles.filterChip, 
-              !selectedCategory && !lowStockFilter && styles.filterChipSelected
+              styles.categoryChip,
+              !selectedCategory ? styles.selectedCategoryChip : null
             ]}
-            onPress={clearFilters}
+            onPress={() => setSelectedCategory(null)}
           >
-            <Ionicons 
-              name="apps-outline" 
-              size={18} 
-              color={!selectedCategory && !lowStockFilter ? 'white' : '#666'} 
-              style={styles.filterIcon}
-            />
-            <View>
-              <Text style={!selectedCategory && !lowStockFilter ? styles.filterChipTextSelected : styles.filterChipText}>
-                Todos ({products.length})
-              </Text>
-              <Text style={!selectedCategory && !lowStockFilter ? styles.filterValueTextSelected : styles.filterValueText}>
-                {formatPrice(products.reduce((sum, p) => sum + ((p.price || 0) * (p.stock || 0)), 0))}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[
-              styles.filterChip, 
-              lowStockFilter && styles.filterChipSelected
-            ]}
-            onPress={() => {
-              setLowStockFilter(!lowStockFilter);
-              setSelectedCategory(null);
-            }}
-          >
-            <Ionicons 
-              name="alert-circle-outline" 
-              size={18} 
-              color={lowStockFilter ? 'white' : '#666'} 
-              style={styles.filterIcon}
-            />
-            <View>
-              <Text style={lowStockFilter ? styles.filterChipTextSelected : styles.filterChipText}>
-                Stock Bajo ({products.filter(p => p.stock <= 5).length})
-              </Text>
-              <Text style={lowStockFilter ? styles.filterValueTextSelected : styles.filterValueText}>
-                {formatPrice(products.filter(p => p.stock <= 5).reduce((sum, p) => sum + ((p.price || 0) * (p.stock || 0)), 0))}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-        
-
-
-
-          
-          {/* Mostrar todas las categorías predefinidas */}
-          {predefinedCategories.map(category => {
-            const count = products.filter(p => p.category === category.id).length;
-            const value = categoryValues[category.id] || 0;
-            
-            return (
-              <TouchableOpacity
-                key={category.id}
+            <View style={styles.categoryChipContent}>
+              <Ionicons 
+                name="apps-outline" 
+                size={18} 
+                color={!selectedCategory ? 'white' : colors.primary} 
+                style={styles.categoryIcon}
+              />
+              <Text 
                 style={[
-                  styles.filterChip, 
-                  selectedCategory === category.id && styles.filterChipSelected
+                  styles.categoryText,
+                  !selectedCategory ? styles.selectedCategoryText : null
                 ]}
-                onPress={() => {
-                  if (selectedCategory === category.id) {
-                    setSelectedCategory(null);
-                  } else {
-                    setSelectedCategory(category.id);
-                    setLowStockFilter(false);
-                  }
-                }}
               >
+                Todos
+              </Text>
+            </View>
+          </TouchableOpacity>
+          
+          {categories.map(category => (
+            <TouchableOpacity
+              key={category.id}
+              style={[
+                styles.categoryChip,
+                selectedCategory === category.id ? styles.selectedCategoryChip : null
+              ]}
+              onPress={() => setSelectedCategory(category.id)}
+            >
+              <View style={styles.categoryChipContent}>
                 <Ionicons 
                   name={getCategoryIcon(category.id)} 
                   size={18} 
-                  color={selectedCategory === category.id ? 'white' : '#666'} 
-                  style={styles.filterIcon}
+                  color={selectedCategory === category.id ? 'white' : colors.primary} 
+                  style={styles.categoryIcon}
                 />
-                <View>
-                  <Text style={selectedCategory === category.id ? styles.filterChipTextSelected : styles.filterChipText}>
-                    {category.name} ({count})
-                  </Text>
-                  <Text style={selectedCategory === category.id ? styles.filterValueTextSelected : styles.filterValueText}>
-                    {formatPrice(value)}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+                <Text 
+                  style={[
+                    styles.categoryText,
+                    selectedCategory === category.id ? styles.selectedCategoryText : null
+                  ]}
+                >
+                  {category.name}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
         </ScrollView>
       </View>
     );
+  };
+  
+  const navigateToCategory = (categoryId) => {
+    setSelectedCategory(categoryId);
+    setLowStockFilter(false);
+    setZeroStockFilter(false);
   };
   
   return (
@@ -749,5 +769,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingLeft: 15,
     width: 50,
+  },
+  categoriesWrapper: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+    marginBottom: 12,
+  },
+  categoriesContainer: {
+    paddingVertical: 14,
+  },
+  categoriesContent: {
+    paddingHorizontal: 16,
+  },
+  categoryChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 25,
+    backgroundColor: '#f5f5f5',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    minWidth: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  categoryChipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedCategoryChip: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  categoryIcon: {
+    marginRight: 8,
+  },
+  categoryText: {
+    color: '#555',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  selectedCategoryText: {
+    color: 'white',
+    fontWeight: '600',
   },
 });

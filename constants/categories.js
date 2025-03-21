@@ -1,30 +1,10 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
+import { getCategoriesForIndustry } from '../utils/categoryUtils';
 
-// Categorías predefinidas para un supermercado/minimercado
-export const predefinedCategories = [
-  { id: 'lacteos', name: 'Lácteos', icon: 'nutrition-outline' },
-  { id: 'panaderia', name: 'Panadería', icon: 'restaurant-outline' },
-  { id: 'carnes', name: 'Carnes', icon: 'fast-food-outline' },
-  { id: 'frutas_verduras', name: 'Frutas y Verduras', icon: 'leaf-outline' }, // Ajusté el ID para mejor legibilidad
-  { id: 'bebidas', name: 'Bebidas', icon: 'wine-outline' },
-  { id: 'limpieza', name: 'Limpieza', icon: 'sparkles-outline' },
-  { id: 'cuidado_personal', name: 'Cuidado Personal', icon: 'body-outline' }, // Ajusté el ID para mejor legibilidad
-  { id: 'snacks', name: 'Snacks', icon: 'pizza-outline' },
-  { id: 'otros', name: 'Otros', icon: 'grid-outline' },
-  { id: 'bazar', name: 'Bazar', icon: 'basket-outline' },
-  { id: 'almacen', name: 'Almacén', icon: 'home-outline' },
-  { id: 'dulces', name: 'Dulces', icon: 'ice-cream-outline' },
-  { id: 'golosinas', name: 'Golosinas', icon: 'ice-cream-outline' },
-  { id: 'cigarros', name: 'Cigarros', icon: 'flame-outline' },
-  { id: 'medicamentos', name: 'Medicamentos', icon: 'medical-outline' },
-  { id: 'condimentos', name: 'Condimentos', icon: 'pizza-outline' },
-  { id: 'salsas', name: 'Salsas', icon: 'wine-outline' },
-];
-
-// Categorías (incluirá las predefinidas y las personalizadas)
-export let categories = [...predefinedCategories];
+// Categorías (incluirá las personalizadas)
+export let categories = [];
 
 // Función para cargar categorías personalizadas
 export const loadCustomCategories = async () => {
@@ -44,31 +24,64 @@ export const loadCustomCategories = async () => {
         icon: data.icon || 'pricetag-outline'
       }));
       
-      // Combinar categorías predefinidas y personalizadas
-      categories = [...predefinedCategories, ...customCategoriesArray];
+      categories = customCategoriesArray;
     } else {
-      categories = [...predefinedCategories];
+      // Si no hay categorías personalizadas, cargar las predefinidas según la industria
+      const businessInfoRef = doc(db, 'businessInfo', auth.currentUser.uid);
+      const businessInfoDoc = await getDoc(businessInfoRef);
+      
+      if (businessInfoDoc.exists()) {
+        const industry = businessInfoDoc.data().industry || 'general';
+        categories = getCategoriesForIndustry(industry);
+      } else {
+        categories = getCategoriesForIndustry('general');
+      }
     }
+    
+    return categories;
   } catch (error) {
     console.error('Error al cargar categorías personalizadas:', error);
-    categories = [...predefinedCategories];
+    categories = getCategoriesForIndustry('general');
+    return categories;
   }
-  
-  return categories;
 };
 
-// Función para obtener el nombre de una categoría por su ID
-export const getCategoryName = (categoryId) => {
-  if (!categoryId) return 'Sin categoría';
-  
-  const category = predefinedCategories.find(cat => cat.id === categoryId);
-  return category ? category.name : categoryId;
+// Función para obtener el nombre de la categoría
+export const getCategoryName = (categoryId, categoriesList = categories) => {
+  const category = categoriesList.find(cat => cat.id === categoryId);
+  return category ? category.name : 'Sin categoría';
 };
 
-// Función para obtener el icono de una categoría por su ID
+// Función para obtener el icono de la categoría
 export const getCategoryIcon = (categoryId) => {
-  if (!categoryId) return 'help-circle-outline';
+  // Iconos por defecto según el tipo de categoría
+  const defaultIcons = {
+    'general': 'cube-outline',
+    'offers': 'pricetag-outline',
+    'new': 'star-outline',
+    'popular': 'flame-outline',
+    'shirts': 'shirt-outline',
+    'pants': 'cut-outline',
+    'shoes': 'footsteps-outline',
+    'accessories': 'watch-outline',
+    'medications': 'medical-outline',
+    'vitamins': 'fitness-outline',
+    'dairy': 'nutrition-outline',
+    'meat': 'restaurant-outline',
+    'fruits': 'leaf-outline',
+    'beverages': 'wine-outline',
+    'smartphones': 'phone-portrait-outline',
+    'computers': 'laptop-outline',
+    'starters': 'restaurant-outline',
+    'desserts': 'ice-cream-outline',
+    'bread': 'fast-food-outline',
+    'tools': 'construct-outline',
+    'skincare': 'water-outline',
+    'makeup': 'color-palette-outline',
+    'fiction': 'book-outline',
+    'nonfiction': 'document-text-outline',
+    // Añadir más iconos según sea necesario
+  };
   
-  const category = predefinedCategories.find(cat => cat.id === categoryId);
-  return category ? category.icon : 'grid-outline';
+  return defaultIcons[categoryId] || 'cube-outline'; // Icono por defecto
 }; 

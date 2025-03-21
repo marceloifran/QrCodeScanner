@@ -11,15 +11,18 @@ import {
   Platform,
   ScrollView,
   Modal,
-  FlatList
+  FlatList,
+  Switch,
+  Picker
 } from 'react-native';
-import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, serverTimestamp, getDoc, doc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { Camera, CameraView } from 'expo-camera';
 import { colors } from '../theme/colors';
 import { categories } from '../constants/categories';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { getCategoriesForIndustry, getCustomFieldsForIndustry } from '../utils/categoryUtils';
 
 export default function AddProductScreen({ navigation }) {
   const [barcode, setBarcode] = useState('');
@@ -37,6 +40,13 @@ export default function AddProductScreen({ navigation }) {
   const [expiryDate, setExpiryDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [notifyExpiry, setNotifyExpiry] = useState(false);
+  const [industryConfig, setIndustryConfig] = useState(null);
+  const [industryType, setIndustryType] = useState('general');
+  const [customFields, setCustomFields] = useState({});
+  const [categories, setCategories] = useState([]);
+  const [showSelectModal, setShowSelectModal] = useState(false);
+  const [currentSelectField, setCurrentSelectField] = useState(null);
+  const [currentDateField, setCurrentDateField] = useState(null);
 
   const commonPercentages = ['10', '15', '20', '25', '30', '35', '40', '50'];
 
@@ -46,6 +56,134 @@ export default function AddProductScreen({ navigation }) {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
+  }, []);
+
+  // Añadir esta función en useEffect para cargar la configuración
+  useEffect(() => {
+    const loadIndustryConfig = async () => {
+      try {
+        const configDoc = await getDoc(doc(db, 'industryConfig', auth.currentUser.uid));
+        if (configDoc.exists()) {
+          const config = configDoc.data();
+          setIndustryConfig(config);
+          setIndustryType(config.industry);
+          
+          // Inicializar campos personalizados
+          const initialCustomFields = {};
+          Object.keys(config.customFields).forEach(field => {
+            if (config.customFields[field].enabled) {
+              initialCustomFields[field] = '';
+            }
+          });
+          setCustomFields(initialCustomFields);
+        }
+      } catch (error) {
+        console.error('Error al cargar configuración de industria:', error);
+      }
+    };
+    
+    loadIndustryConfig();
+  }, []);
+
+  // Dentro del componente AddProductScreen, añadir un useEffect para cargar las categorías
+  useEffect(() => {
+    const loadCategoriesAndConfig = async () => {
+      try {
+        // Cargar la industria del usuario
+        const businessInfoRef = doc(db, 'businessInfo', auth.currentUser.uid);
+        const businessInfoDoc = await getDoc(businessInfoRef);
+        
+        let userIndustry = 'general';
+        if (businessInfoDoc.exists()) {
+          userIndustry = businessInfoDoc.data().industry || 'general';
+          setIndustryType(userIndustry);
+        }
+        
+        console.log('AddProduct - Cargando datos para industria:', userIndustry);
+        
+        // Obtener categorías directamente de categoryUtils
+        const industryCategories = getCategoriesForIndustry(userIndustry);
+        setCategories(industryCategories);
+        
+        // Cargar configuración de campos personalizados
+        const configDoc = await getDoc(doc(db, 'industryConfig', auth.currentUser.uid));
+        if (configDoc.exists()) {
+          const config = configDoc.data();
+          
+          // Verificar que la industria en la configuración coincida con la industria actual
+          if (config.industry !== userIndustry) {
+            console.log('La industria en la configuración no coincide con la industria actual, actualizando...');
+            // Actualizar la configuración con los campos correctos para la industria actual
+            const updatedConfig = {
+              ...config,
+              industry: userIndustry,
+              customFields: getCustomFieldsForIndustry(userIndustry),
+              updatedAt: new Date()
+            };
+            
+            // Guardar la configuración actualizada
+            await setDoc(doc(db, 'industryConfig', auth.currentUser.uid), updatedConfig, { merge: true });
+            
+            setIndustryConfig(updatedConfig);
+            
+            // Inicializar campos personalizados
+            const initialCustomFields = {};
+            if (updatedConfig.customFields) {
+              Object.keys(updatedConfig.customFields).forEach(field => {
+                if (updatedConfig.customFields[field].enabled) {
+                  initialCustomFields[field] = '';
+                }
+              });
+            }
+            setCustomFields(initialCustomFields);
+          } else {
+            // La industria coincide, usar la configuración existente
+            setIndustryConfig(config);
+            
+            // Inicializar campos personalizados
+            const initialCustomFields = {};
+            if (config.customFields) {
+              Object.keys(config.customFields).forEach(field => {
+                if (config.customFields[field].enabled) {
+                  initialCustomFields[field] = '';
+                }
+              });
+            }
+            setCustomFields(initialCustomFields);
+          }
+        } else {
+          // Si no existe configuración, crear una basada en la industria
+          const defaultConfig = {
+            industry: userIndustry,
+            customFields: getCustomFieldsForIndustry(userIndustry),
+            createdAt: new Date()
+          };
+          
+          // Guardar la configuración por defecto
+          await setDoc(doc(db, 'industryConfig', auth.currentUser.uid), defaultConfig);
+          
+          setIndustryConfig(defaultConfig);
+          
+          // Inicializar campos personalizados
+          const initialCustomFields = {};
+          if (defaultConfig.customFields) {
+            Object.keys(defaultConfig.customFields).forEach(field => {
+              if (defaultConfig.customFields[field].enabled) {
+                initialCustomFields[field] = '';
+              }
+            });
+          }
+          setCustomFields(initialCustomFields);
+        }
+      } catch (error) {
+        console.error('Error al cargar categorías y configuración:', error);
+        // En caso de error, usar categorías generales
+        const defaultCategories = getCategoriesForIndustry('general');
+        setCategories(defaultCategories);
+      }
+    };
+    
+    loadCategoriesAndConfig();
   }, []);
 
   // Función para aplicar porcentaje al precio
@@ -141,14 +279,14 @@ export default function AddProductScreen({ navigation }) {
         }
       }
       
-      // Crear el producto con o sin código de barras
+      // Crear objeto de producto con campos básicos
       const productData = {
         name,
+        barcode,
         price: parseFloat(price),
         basePrice: basePrice ? parseFloat(basePrice) : parseFloat(price),
         stock: parseInt(stock),
         category,
-        barcode: barcode || '', // Guardar cadena vacía si no hay código
         lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold) : null,
         userId: auth.currentUser.uid,
         createdAt: serverTimestamp(),
@@ -156,6 +294,12 @@ export default function AddProductScreen({ navigation }) {
         expiryDate: expiryDate || null,
         notifyExpiry: notifyExpiry,
       };
+      
+      // Añadir campos personalizados según la industria
+      if (industryConfig) {
+        productData.industryType = industryType;
+        productData.customFields = customFields;
+      }
       
       await addDoc(collection(db, 'products'), productData);
       
@@ -192,10 +336,19 @@ export default function AddProductScreen({ navigation }) {
     }
   };
 
-  const onChangeDate = (event, selectedDate) => {
-    setShowDatePicker(false);
+  const handleDateChange = (event, selectedDate) => {
+    setShowDatePicker(Platform.OS === 'ios' ? true : false);
+    
     if (selectedDate) {
-      setExpiryDate(selectedDate);
+      if (currentDateField === 'expiryDate') {
+        setExpiryDate(selectedDate);
+      } else if (currentDateField) {
+        console.log('Actualizando campo personalizado de fecha:', currentDateField, selectedDate);
+        setCustomFields({
+          ...customFields,
+          [currentDateField]: selectedDate
+        });
+      }
     }
   };
 
@@ -245,6 +398,149 @@ export default function AddProductScreen({ navigation }) {
       </View>
     </Modal>
   );
+
+  const getCategoryName = (categoryId, categoriesList) => {
+    const category = categoriesList.find(cat => cat.id === categoryId);
+    return category ? category.name : 'Sin categoría';
+  };
+
+  const renderCustomFields = () => {
+    if (!industryConfig || !industryConfig.customFields) {
+      console.log('No hay configuración de industria o campos personalizados');
+      return null;
+    }
+    
+    return (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Información Adicional</Text>
+        
+        {Object.keys(industryConfig.customFields).map(fieldKey => {
+          const field = industryConfig.customFields[fieldKey];
+          if (!field.enabled) return null;
+          
+          return (
+            <View key={fieldKey} style={styles.formGroup}>
+              <Text style={styles.label}>
+                {field.label}
+                {field.required && <Text style={styles.requiredStar}> *</Text>}
+              </Text>
+              
+              {/* Campo de texto simple */}
+              {(field.type === 'text' || !field.type) && (
+                <TextInput
+                  style={styles.input}
+                  value={customFields[fieldKey] || ''}
+                  onChangeText={(text) => {
+                    setCustomFields({...customFields, [fieldKey]: text});
+                  }}
+                  placeholder={`Ingrese ${field.label.toLowerCase()}`}
+                />
+              )}
+              
+              {/* Campo de texto multilínea */}
+              {field.type === 'textarea' && (
+                <TextInput
+                  style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+                  value={customFields[fieldKey] || ''}
+                  onChangeText={(text) => {
+                    setCustomFields({...customFields, [fieldKey]: text});
+                  }}
+                  placeholder={`Ingrese ${field.label.toLowerCase()}`}
+                  multiline={true}
+                  numberOfLines={4}
+                />
+              )}
+              
+              {/* Campo numérico */}
+              {field.type === 'number' && (
+                <TextInput
+                  style={styles.input}
+                  value={customFields[fieldKey] || ''}
+                  onChangeText={(text) => {
+                    const numericValue = text.replace(/[^0-9]/g, '');
+                    setCustomFields({...customFields, [fieldKey]: numericValue});
+                  }}
+                  placeholder={`Ingrese ${field.label.toLowerCase()}`}
+                  keyboardType="numeric"
+                />
+              )}
+              
+              {/* Selector de fecha */}
+              {field.type === 'date' && (
+                <TouchableOpacity 
+                  style={styles.input}
+                  onPress={() => {
+                    // Implementar selector de fecha
+                    Alert.alert('Fecha', 'Selector de fecha no implementado');
+                  }}
+                >
+                  <Text style={{ color: customFields[fieldKey] ? '#000' : '#999' }}>
+                    {customFields[fieldKey] || `Seleccionar ${field.label.toLowerCase()}`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              
+              {/* Selector booleano (Sí/No) */}
+              {field.type === 'boolean' && (
+                <View style={{ flexDirection: 'row', marginTop: 10 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.booleanOption,
+                      customFields[fieldKey] === true && styles.selectedBooleanOption
+                    ]}
+                    onPress={() => setCustomFields({...customFields, [fieldKey]: true})}
+                  >
+                    <Text style={[
+                      styles.booleanOptionText,
+                      customFields[fieldKey] === true && styles.selectedBooleanOptionText
+                    ]}>Sí</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.booleanOption,
+                      customFields[fieldKey] === false && styles.selectedBooleanOption
+                    ]}
+                    onPress={() => setCustomFields({...customFields, [fieldKey]: false})}
+                  >
+                    <Text style={[
+                      styles.booleanOptionText,
+                      customFields[fieldKey] === false && styles.selectedBooleanOptionText
+                    ]}>No</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              {/* Selector de opciones */}
+              {field.type === 'select' && field.options && (
+                <View style={styles.selectContainer}>
+                  {field.options.map((option, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.selectOption,
+                        customFields[fieldKey] === option && styles.selectedSelectOption
+                      ]}
+                      onPress={() => {
+                        setCustomFields({...customFields, [fieldKey]: option});
+                      }}
+                    >
+                      <Text style={[
+                        styles.selectOptionText,
+                        customFields[fieldKey] === option && styles.selectedSelectOptionText
+                      ]}>
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })}
+      </View>
+    );
+  };
 
   if (hasPermission === null) {
     return (
@@ -369,15 +665,14 @@ export default function AddProductScreen({ navigation }) {
         <View style={styles.formGroup}>
           <Text style={styles.label}>Categoría</Text>
           <TouchableOpacity
-            style={styles.categorySelector}
+            style={styles.inputContainer}
             onPress={() => setShowCategoryModal(true)}
           >
-            <Text
-              style={category ? styles.categoryText : styles.categoryPlaceholder}
-            >
-              {category ? categories.find(c => c.id === category)?.name : 'Seleccionar categoría'}
+            <Ionicons name="pricetag-outline" size={20} color="#666" style={styles.inputIcon} />
+            <Text style={[styles.input, !category && styles.placeholderText]}>
+              {category ? getCategoryName(category, categories) : 'Seleccionar categoría'}
             </Text>
-            <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
+            <Ionicons name="chevron-down" size={20} color="#666" />
           </TouchableOpacity>
         </View>
         
@@ -409,6 +704,8 @@ export default function AddProductScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </View>
+        
+        {renderCustomFields()}
         
         <TouchableOpacity
           style={[styles.addButton, loading && { opacity: 0.7 }]}
@@ -458,10 +755,11 @@ export default function AddProductScreen({ navigation }) {
       
       {showDatePicker && (
         <DateTimePicker
-          value={expiryDate}
+          testID="dateTimePicker"
+          value={expiryDate || new Date()}
           mode="date"
           display="default"
-          onChange={onChangeDate}
+          onChange={handleDateChange}
           minimumDate={new Date()}
         />
       )}
@@ -565,7 +863,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-  categorySelector: {
+  inputContainer: {
     backgroundColor: 'white',
     borderWidth: 1,
     borderColor: colors.border,
@@ -575,11 +873,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  categoryText: {
-    fontSize: 16,
-    color: colors.text.primary,
+  inputIcon: {
+    marginRight: 10,
   },
-  categoryPlaceholder: {
+  placeholderText: {
     color: colors.text.secondary,
   },
   dateSelector: {
@@ -730,5 +1027,159 @@ const styles = StyleSheet.create({
   },
   toggleIndicatorInactive: {
     marginLeft: 0,
+  },
+  section: {
+    marginTop: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 10,
+  },
+  requiredStar: {
+    color: 'red',
+    fontWeight: 'bold',
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    padding: 10,
+  },
+  datePickerButtonText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    marginRight: 10,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    padding: 10,
+  },
+  selectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    padding: 15,
+    height: 50,
+  },
+  selectButtonText: {
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 20,
+    width: '80%',
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: colors.text.primary,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  selectedOptionItem: {
+    backgroundColor: 'rgba(0, 128, 0, 0.05)',
+  },
+  optionText: {
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  selectedOptionText: {
+    color: colors.primary,
+    fontWeight: 'bold',
+  },
+  cancelButton: {
+    marginTop: 15,
+    padding: 15,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: colors.text.primary,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  pickerContainer: {
+    backgroundColor: 'white',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  picker: {
+    height: 50,
+  },
+  booleanOption: {
+    flex: 1,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    marginRight: 5,
+    alignItems: 'center',
+  },
+  selectedBooleanOption: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  booleanOptionText: {
+    color: colors.text.primary,
+  },
+  selectedBooleanOptionText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  selectContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 5,
+  },
+  selectOption: {
+    padding: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 5,
+    margin: 5,
+  },
+  selectedSelectOption: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  selectOptionText: {
+    color: colors.text.primary,
+  },
+  selectedSelectOptionText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
 });

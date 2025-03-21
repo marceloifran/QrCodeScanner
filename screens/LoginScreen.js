@@ -135,6 +135,12 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
         </View>
         
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>¿No tienes una cuenta?</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+            <Text style={styles.signUpText}>Regístrate</Text>
+          </TouchableOpacity>
+        </View>
      
       </ScrollView>
     </KeyboardAvoidingView>
@@ -230,14 +236,16 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 30,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 30,
   },
   footerText: {
-    color: 'white',
+    color: colors.text.secondary,
     marginRight: 5,
   },
   signUpText: {
-    color: 'white',
+    color: colors.primary,
     fontWeight: 'bold',
   },
 }); 

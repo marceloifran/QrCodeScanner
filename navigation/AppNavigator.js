@@ -3,32 +3,30 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { auth, db } from '../firebase/config';
-import { View, TouchableOpacity, Text, StyleSheet, StatusBar } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { colors } from '../theme/colors';
 
-// Pantallas
+// Importar pantallas
+import LoginScreen from '../screens/LoginScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ProductListScreen from '../screens/ProductListScreen';
+import ScanForStockScreen from '../screens/ScanForStockScreen';
+import AddProductScreen from '../screens/AddProductScreen';
+import EditProductScreen from '../screens/EditProductScreen';
 import ScanProductScreen from '../screens/ScanProductScreen';
 import SalesHistoryScreen from '../screens/SalesHistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import LoginScreen from '../screens/LoginScreen';
-import AddProductScreen from '../screens/AddProductScreen';
-import EditProductScreen from '../screens/EditProductScreen';
-import BusinessInfoScreen from '../screens/BusinessInfoScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
-import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
-import ScanForStockScreen from '../screens/ScanForStockScreen';
-import CartScreen from '../screens/CartScreen';
-import NewCartScreen from '../screens/NewCartScreen';
+import RegisterScreen from '../screens/RegisterScreen';
+import BusinessSettingsScreen from '../screens/BusinessSettingsScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Navegador de pestañas principal
-const TabNavigator = () => {
+// Componente para el botón de notificaciones
+const NotificationBell = ({ navigation }) => {
   const [notificationCount, setNotificationCount] = useState(0);
   
   useEffect(() => {
@@ -39,105 +37,38 @@ const TabNavigator = () => {
     if (!auth.currentUser) return;
     
     try {
+      // Primero obtenemos todos los productos del usuario
       const q = query(
         collection(db, 'products'),
-        where('userId', '==', auth.currentUser.uid),
-        where('stock', '<=', 5)
+        where('userId', '==', auth.currentUser.uid)
       );
       const querySnapshot = await getDocs(q);
-      setNotificationCount(querySnapshot.size);
+      
+      // Filtramos usando el umbral personalizado de cada producto
+      const lowStockProducts = querySnapshot.docs.filter(doc => {
+        const product = doc.data();
+        const threshold = product.lowStockThreshold || 5; // Usar umbral personalizado o 5 por defecto
+        return product.stock <= threshold;
+      });
+      
+      setNotificationCount(lowStockProducts.length);
     } catch (error) {
       console.error('Error verificando notificaciones:', error);
     }
   };
   
   return (
-    <Tab.Navigator
-      screenOptions={({ route, navigation }) => ({
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-          
-          if (route.name === 'Dashboard') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'ProductList') {
-            iconName = focused ? 'cube' : 'cube-outline';
-          } else if (route.name === 'SalesHistory') {
-            iconName = focused ? 'receipt' : 'receipt-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
-          } else if (route.name === 'Notifications') {
-            iconName = focused ? 'notifications' : 'notifications-outline';
-          }
-          
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.text.tertiary,
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: colors.primary,
-        },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-        headerRight: () => {
-          if (route.name === 'Dashboard') {
-            return (
-              <View style={styles.notificationContainer}>
-                <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
-                  <Ionicons 
-                    name="notifications-outline" 
-                    size={24} 
-                    color="#fff" 
-                    style={{marginRight: 15}}
-                  />
-                  {notificationCount > 0 && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{notificationCount}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
-            );
-          }
-          return null;
-        }
-      })}
+    <TouchableOpacity 
+      style={styles.notificationButton}
+      onPress={() => navigation.navigate('Notifications')}
     >
-      <Tab.Screen 
-        name="Dashboard" 
-        component={DashboardScreen} 
-        options={{ 
-          title: 'Inicio',
-          headerBackTitle: 'Inicio'
-        }} 
-      />
-      <Tab.Screen 
-        name="ProductList" 
-        component={ProductListScreen} 
-        options={{ 
-          title: 'Productos',
-          headerBackTitle: 'Productos'
-        }} 
-      />
-      <Tab.Screen 
-        name="SalesHistory" 
-        component={SalesHistoryScreen} 
-        options={{ 
-          title: 'Ventas',
-          headerBackTitle: 'Ventas'
-        }} 
-      />
-      <Tab.Screen 
-        name="Notifications" 
-        component={NotificationsScreen} 
-        options={{ 
-          title: 'Notificaciones',
-          headerBackTitle: 'Inicio'
-        }} 
-      />
-    </Tab.Navigator>
+      <Ionicons name="notifications-outline" size={24} color="white" />
+      {notificationCount > 0 && (
+        <View style={styles.badgeContainer}>
+          <Text style={styles.badgeText}>{notificationCount}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
   );
 };
 
@@ -145,23 +76,112 @@ const TabNavigator = () => {
 const AuthNavigator = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="Login" component={LoginScreen} />
+    <Stack.Screen name="Register" component={RegisterScreen} />
   </Stack.Navigator>
 );
 
-// Navegador principal
+// Navegador principal de la aplicación
 const MainNavigator = () => (
+  <>
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+          
+          if (route.name === 'Dashboard') {
+            iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Products') {
+            iconName = focused ? 'list' : 'list-outline';
+          } else if (route.name === 'Scan') {
+            iconName = focused ? 'scan' : 'scan-outline';
+          } else if (route.name === 'Sales') {
+            iconName = focused ? 'cart' : 'cart-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
+          }
+          
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: 'gray',
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Dashboard" component={DashboardStack} options={{ title: 'Panel' }} />
+      <Tab.Screen name="Products" component={ProductsStack} options={{ title: 'Productos' }} />
+      <Tab.Screen name="Scan" component={ScanStack} options={{ title: 'Nueva Venta' }} />
+      <Tab.Screen name="Sales" component={SalesStack} options={{ title: 'Ventas' }} />
+      <Tab.Screen name="Profile" component={ProfileStack} options={{ title: 'Perfil' }} />
+    </Tab.Navigator>
+    
+    <Stack.Screen 
+      name="Notifications" 
+      component={NotificationsScreen} 
+      options={{ 
+        title: 'Notificaciones',
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
+      }} 
+    />
+  </>
+);
+
+// Stack para Dashboard
+const DashboardStack = () => (
   <Stack.Navigator>
     <Stack.Screen 
-      name="TabNavigator" 
-      component={TabNavigator} 
-      options={{ headerShown: false }} 
+      name="DashboardScreen" 
+      component={DashboardScreen} 
+      options={{ 
+        title: 'Dashboard',
+        headerShown: false
+      }} 
+    />
+    <Stack.Screen 
+      name="ScanProduct" 
+      component={ScanProductScreen} 
+      options={{ 
+        title: 'Escanear Producto',
+        headerShown: false
+      }} 
+    />
+    <Stack.Screen 
+      name="ScanForStock" 
+      component={ScanForStockScreen} 
+      options={{ 
+        title: 'Escanear Stock',
+        headerShown: false
+      }} 
+    />
+  </Stack.Navigator>
+);
+
+// Stack para Productos
+const ProductsStack = () => (
+  <Stack.Navigator>
+    <Stack.Screen 
+      name="ProductList" 
+      component={ProductListScreen} 
+      options={{ 
+        title: 'Mis Productos',
+        headerShown: true,
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
+      }} 
     />
     <Stack.Screen 
       name="AddProduct" 
       component={AddProductScreen} 
       options={{ 
         title: 'Agregar Producto',
-        headerBackTitle: 'Atrás'
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
       }} 
     />
     <Stack.Screen 
@@ -169,42 +189,84 @@ const MainNavigator = () => (
       component={EditProductScreen} 
       options={{ 
         title: 'Editar Producto',
-        headerBackTitle: 'Atrás'
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
       }} 
-    />
-    <Stack.Screen 
-      name="BusinessInfo" 
-      component={BusinessInfoScreen} 
-      options={{ title: 'Información del Negocio' }} 
     />
     <Stack.Screen 
       name="ScanForStock" 
       component={ScanForStockScreen} 
       options={{ 
-        headerShown: false
+        title: 'Escanear Stock',
+        headerShown: false,
+      }} 
+    />
+  </Stack.Navigator>
+);
+
+// Stack para Ventas
+const SalesStack = () => (
+  <Stack.Navigator>
+    <Stack.Screen 
+      name="SalesHistory" 
+      component={SalesHistoryScreen} 
+      options={{ 
+        title: 'Historial de Ventas',
+        headerShown: true,
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
+      }} 
+    />
+  </Stack.Navigator>
+);
+
+// Stack para Perfil
+const ProfileStack = () => (
+  <Stack.Navigator>
+    <Stack.Screen 
+      name="ProfileScreen" 
+      component={ProfileScreen} 
+      options={{ 
+        title: 'Perfil',
+        headerShown: true,
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
       }} 
     />
     <Stack.Screen 
-      name="ScanProductScreen" 
+      name="BusinessSettings" 
+      component={BusinessSettingsScreen} 
+      options={{ 
+        title: 'Configuración del Negocio',
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
+      }} 
+    />
+  </Stack.Navigator>
+);
+
+// Crear un stack navigator para la pestaña de escaneo
+const ScanStack = () => (
+  <Stack.Navigator>
+    <Stack.Screen 
+      name="ScanScreen" 
       component={ScanProductScreen} 
       options={{ 
-        headerShown: false
+        title: 'Nueva Venta',
+        headerShown: true,
+        headerStyle: {
+          backgroundColor: colors.primary,
+        },
+        headerTintColor: '#fff',
       }} 
-    />
-    <Stack.Screen 
-      name="Cart" 
-      component={CartScreen} 
-      options={{ title: 'Carrito' }} 
-    />
-    <Stack.Screen 
-      name="NewCart" 
-      component={NewCartScreen} 
-      options={{ title: 'Nueva Venta' }} 
-    />
-    <Stack.Screen 
-      name="NotificationSettings" 
-      component={NotificationSettingsScreen} 
-      options={{ title: 'Configuración de Notificaciones' }} 
     />
   </Stack.Navigator>
 );
@@ -222,14 +284,13 @@ const AppNavigator = () => {
     
     return unsubscribe;
   }, []);
-
+  
   if (initializing) {
     return null;
   }
-
+  
   return (
     <NavigationContainer>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
           <Stack.Screen name="Main" component={MainNavigator} />
@@ -241,15 +302,17 @@ const AppNavigator = () => {
   );
 };
 
+export default AppNavigator;
+
 const styles = StyleSheet.create({
-  notificationContainer: {
+  notificationButton: {
+    marginRight: 15,
     position: 'relative',
-    marginRight: 10,
   },
-  badge: {
+  badgeContainer: {
     position: 'absolute',
-    right: 10,
-    top: -5,
+    right: -6,
+    top: -3,
     backgroundColor: 'red',
     borderRadius: 10,
     width: 20,
@@ -262,6 +325,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
-});
-
-export default AppNavigator; 
+}); 

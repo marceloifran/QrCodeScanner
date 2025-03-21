@@ -5,7 +5,11 @@ import { colors } from '../theme/colors';
 import { formatPrice } from '../utils/formatters';
 
 const ProductItem = ({ item, onPress, isSelecting, onSelectProduct }) => {
-  const stockColor = item.stock <= 0 ? colors.error : item.stock <= 5 ? '#FFA500' : colors.success;
+  const stockColor = () => {
+    if (item.stock <= 0) return colors.error;
+    const threshold = item.lowStockThreshold || 5; // Usar umbral personalizado o 5 por defecto
+    return item.stock <= threshold ? colors.warning : colors.success;
+  };
 
   return (
     <TouchableOpacity style={styles.productCard} onPress={() => onPress(item)}>
@@ -14,8 +18,8 @@ const ProductItem = ({ item, onPress, isSelecting, onSelectProduct }) => {
         {item.barcode && <Text style={styles.productBarcode}>{item.barcode}</Text>}
         <Text style={styles.productCategory}>{item.category || 'Sin categoría'}</Text>
         <Text style={styles.productPrice}>{formatPrice(item.price)}</Text>
-        <Text style={[styles.productStock, { color: stockColor }]}>
-          Stock: {item.stock} {item.stock <= 5 ? '(Bajo)' : ''}
+        <Text style={[styles.productStock, { color: stockColor() }]}>
+          Stock: {item.stock} {item.stock <= (item.lowStockThreshold || 5) ? '(Bajo)' : ''}
         </Text>
       </View>
 

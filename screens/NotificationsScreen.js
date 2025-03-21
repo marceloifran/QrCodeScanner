@@ -12,6 +12,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
+import { CommonActions } from '@react-navigation/native';
 
 export default function NotificationsScreen({ navigation }) {
   const [notifications, setNotifications] = useState([]);
@@ -53,11 +54,11 @@ export default function NotificationsScreen({ navigation }) {
           }
           return null;
         })
-        .filter(notification => notification !== null); // Filtrar notificaciones nulas
+        .filter(notification => notification !== null);
       
       setNotifications(notificationsList);
     } catch (error) {
-      console.error('Error al cargar notificaciones:', error);
+      console.error('Error cargando notificaciones:', error);
       Alert.alert('Error', 'No se pudieron cargar las notificaciones');
     } finally {
       setLoading(false);
@@ -65,8 +66,16 @@ export default function NotificationsScreen({ navigation }) {
   };
 
   const handleNotificationPress = (notification) => {
-    // Navegar a la pantalla de edición del producto
-    navigation.navigate('EditProduct', { productId: notification.productId });
+    // Usar CommonActions para navegar a través de diferentes navegadores
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: 'Products', // Primero navegar a la pestaña de Productos
+        params: {
+          screen: 'EditProduct', // Luego a la pantalla de edición dentro de ProductsStack
+          params: { productId: notification.productId }
+        }
+      })
+    );
   };
 
   const renderItem = ({ item }) => (

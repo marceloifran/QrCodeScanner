@@ -41,6 +41,21 @@ export default function ProfileScreen({ navigation }) {
               <Text style={[styles.optionTitle, styles.signOutText]}>Cerrar Sesión</Text>
             </View>
           </TouchableOpacity>
+
+          {/* Sección de Configuración del Negocio */}
+          <TouchableOpacity 
+            style={styles.option}
+            onPress={() => navigation.navigate('BusinessSettings')}
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#e8f5e9' }]}>
+              <Ionicons name="business-outline" size={24} color={colors.primary} />
+            </View>
+            <View style={styles.optionTextContainer}>
+              <Text style={styles.optionTitle}>Configuración del Negocio</Text>
+              <Text style={styles.optionDescription}>Editar nombre e industria</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -139,5 +154,21 @@ const styles = StyleSheet.create({
   },
   signOutText: {
     color: '#e53935',
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#e8f5e9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
   },
 }); 

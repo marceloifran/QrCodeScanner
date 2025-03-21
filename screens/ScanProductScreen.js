@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -8,23 +8,20 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
-  Modal,
-  Animated
+  Modal
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { collection, query, where, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+
+// Si usas tu archivo "colors.js", ajusta la ruta de import
+// import { colors } from '../theme/colors';
 
 // Helper para formatear dinero
 function formatMoney(value) {
-  // Redondear a 2 decimales y luego verificar si tiene decimales
-  const roundedValue = Math.round(value * 100) / 100;
-  const hasDecimals = roundedValue % 1 !== 0;
-  
-  return roundedValue.toLocaleString('es-AR', {
-    minimumFractionDigits: hasDecimals ? 2 : 0,
+  return value.toLocaleString('es-AR', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
 }
@@ -43,33 +40,13 @@ export default function ScanProductScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [saleProcessing, setSaleProcessing] = useState(false); // Nuevo estado
-  const [cameraReady, setCameraReady] = useState(false);
-  
-  // Obtener parámetros de la ruta
-  const returnTo = route.params?.returnTo;
-  
-  const cameraRef = useRef(null);
-  
-  // Animación para la línea de escaneo
-  const scanLineAnimation = useRef(new Animated.Value(0)).current;
+  const [processingOrder, setProcessingOrder] = useState(false);
 
   useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
-    
-    // Iniciar la animación de la línea de escaneo
-    startScanLineAnimation();
-    
-    // Limpiar al desmontar
-    return () => {
-      // Detener cualquier proceso en curso
-      setScanning(false);
-      setLoading(false);
-      setAlertActive(false);
-    };
   }, []);
 
   // Calcula el total cada vez que cambia el carrito
@@ -91,46 +68,15 @@ export default function ScanProductScreen({ navigation, route }) {
     }
   }, [route.params?.selectedProduct]);
 
-  // Configurar opciones de navegación
-  useEffect(() => {
-    navigation.setOptions({
-      headerShown: false,
-      title: ''
-    });
-  }, [navigation]);
-
-  // Función para animar la línea de escaneo
-  const startScanLineAnimation = () => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanLineAnimation, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scanLineAnimation, {
-          toValue: 0,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  };
-
-  // Manejar el escaneo de códigos de barras
+  // Escaneo del código de barras
   const handleBarCodeScanned = ({ type, data }) => {
-    if (scanning && !loading && !alertActive && cameraReady) {
-      setScanning(false);
-      processBarcode(data);
-    }
+    setScanning(false);
+    setLoading(true);
+    processBarcode(data);
   };
 
   const processBarcode = async (barcode) => {
     try {
-      // Evitar procesamiento si ya hay una alerta activa
-      if (alertActive) return;
-      
-      setLoading(true);
       const productsQuery = query(
         collection(db, 'products'), 
         where('barcode', '==', barcode),
@@ -140,30 +86,12 @@ export default function ScanProductScreen({ navigation, route }) {
       
       if (querySnapshot.empty) {
         // Producto no encontrado
-        setAlertActive(true); // Marcar que hay una alerta activa
-        Alert.alert(
-          "Producto no encontrado",
-          "¿Deseas agregar un nuevo producto con este código de barras?",
-          [
-            {
-              text: "No",
-              onPress: () => {
-                setLoading(false);
-                setAlertActive(false);
-                setScanning(true);
-              },
-              style: "cancel"
-            },
-            {
-              text: "Sí",
-              onPress: () => {
-                setLoading(false);
-                setAlertActive(false);
-                navigation.navigate('AddProduct', { barcode });
-              }
-            }
-          ]
-        );
+        setAlertActive(true);
+        setTimeout(() => {
+          setLoading(false);
+          setScanning(true);
+          setAlertActive(false);
+        }, 1000);
       } else {
         // Producto encontrado
         const productData = querySnapshot.docs[0].data();
@@ -171,30 +99,50 @@ export default function ScanProductScreen({ navigation, route }) {
           id: querySnapshot.docs[0].id,
           ...productData
         };
-        
-        setLoading(false);
-        setAlertActive(false);
-        
-        // Si venimos de AddProduct, volvemos allí con el código de barras
-        if (returnTo === 'AddProduct') {
-          navigation.navigate('AddProduct', { barcode });
-        } else {
-          // De lo contrario, vamos al carrito con el producto
-          navigation.navigate('Cart', { product });
+
+        // Verificar stock
+        if (product.stock <= 0) {
+          setLoading(false);
+          setScanning(true);
+          return;
         }
+
+        // Ver si ya está en el carrito
+        const existingItemIndex = cart.findIndex(item => item.id === product.id);
+        if (existingItemIndex !== -1) {
+          // Aumentar cantidad en 1
+          const updatedCart = [...cart];
+          const newQuantity = updatedCart[existingItemIndex].quantity + 1;
+          if (newQuantity > product.stock) {
+            setLoading(false);
+            setScanning(true);
+            return;
+          }
+          updatedCart[existingItemIndex].quantity = newQuantity;
+          setCart(updatedCart);
+        } else {
+          // Agregar nuevo item
+          setCart([...cart, {
+            id: product.id,
+            barcode: product.barcode,
+            name: product.name,
+            price: product.price,
+            quantity: 1,
+            stock: product.stock
+          }]);
+        }
+        setLoading(false);
+        setScanning(true);
       }
     } catch (error) {
       console.error('Error al buscar producto:', error);
-      Alert.alert('Error', 'Ocurrió un error al buscar el producto');
-      setLoading(false);
-      setScanning(true);
-      setAlertActive(false);
+      setAlertActive(true);
+      setTimeout(() => {
+        setLoading(false);
+        setScanning(true);
+        setAlertActive(false);
+      }, 1000);
     }
-  };
-
-  // Manejar cuando la cámara está lista
-  const handleCameraReady = () => {
-    setCameraReady(true);
   };
 
   // Agregar producto con cantidad seleccionada (cuando se abre el modal)
@@ -247,8 +195,9 @@ export default function ScanProductScreen({ navigation, route }) {
       Alert.alert('Carrito vacío', 'Agrega productos para continuar');
       return;
     }
-
-    setSaleProcessing(true); // Mostrar el modal de "Guardando venta..."
+    
+    // Mostrar el modal de procesamiento
+    setProcessingOrder(true);
     
     try {
       // Verificar stock antes de procesar
@@ -259,7 +208,7 @@ export default function ScanProductScreen({ navigation, route }) {
         
         if (!productSnap.exists()) {
           Alert.alert('Error', `El producto ${item.name} ya no existe.`);
-          setSaleProcessing(false);
+          setProcessingOrder(false);
           return;
         }
         
@@ -267,7 +216,7 @@ export default function ScanProductScreen({ navigation, route }) {
         
         if (currentStock < item.quantity) {
           Alert.alert('Error', `Stock insuficiente para ${item.name}. Solo quedan ${currentStock} unidades.`);
-          setSaleProcessing(false);
+          setProcessingOrder(false);
           return;
         }
       }
@@ -281,7 +230,8 @@ export default function ScanProductScreen({ navigation, route }) {
           id: item.id,
           name: item.name,
           price: parseFloat(item.price),
-          quantity: parseInt(item.quantity)
+          quantity: parseInt(item.quantity),
+          category: item.category || 'Sin categoría' // Agregar categoría
         })),
         total: parseFloat(totalValue)
       };
@@ -289,7 +239,6 @@ export default function ScanProductScreen({ navigation, route }) {
       
       // Guardar la venta
       const saleRef = await addDoc(collection(db, 'sales'), saleData);
-      console.log('Venta guardada ');
       
       // Actualizar el stock de cada producto
       const updatePromises = cart.map(async (item) => {
@@ -299,6 +248,7 @@ export default function ScanProductScreen({ navigation, route }) {
         if (productSnap.exists()) {
           const currentStock = productSnap.data().stock;
           const newStock = Math.max(0, currentStock - item.quantity);
+          
           
           return updateDoc(productRef, {
             stock: newStock,
@@ -310,7 +260,6 @@ export default function ScanProductScreen({ navigation, route }) {
       await Promise.all(updatePromises);
       
       setCart([]);
-      setSaleProcessing(false); // Ocultar el modal de "Guardando venta..."
       Alert.alert(
         'Venta realizada',
         'La venta se ha registrado correctamente.',
@@ -318,8 +267,10 @@ export default function ScanProductScreen({ navigation, route }) {
       );
     } catch (error) {
       console.error('Error al procesar la venta:', error);
-      setSaleProcessing(false); // Ocultar el modal de "Guardando venta..."
       Alert.alert('Error', 'No se pudo completar la venta: ' + error.message);
+    } finally {
+      // Ocultar el modal de procesamiento
+      setProcessingOrder(false);
     }
   };
 
@@ -366,29 +317,23 @@ export default function ScanProductScreen({ navigation, route }) {
     setCurrentQuantity(newQty.toString());
   };
 
-  // Volver a la pantalla anterior
-  const handleGoBack = () => {
-    navigation.goBack();
-  };
-
   // Si todavía no hay permisos de cámara
   if (hasPermission === null) {
     return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.text}>Solicitando permisos de cámara...</Text>
+      <View style={styles.cameraPermissionContainer}>
+        <Text>Solicitando permiso de cámara...</Text>
       </View>
     );
   }
   if (hasPermission === false) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.text}>No se tiene acceso a la cámara</Text>
+      <View style={styles.cameraPermissionContainer}>
+        <Text>No hay acceso a la cámara</Text>
         <TouchableOpacity 
-          style={styles.button}
-          onPress={handleGoBack}
+          style={styles.permissionButton}
+          onPress={() => navigation.goBack()}
         >
-          <Text style={styles.buttonText}>Volver</Text>
+          <Text style={styles.permissionButtonText}>Volver</Text>
         </TouchableOpacity>
       </View>
     );
@@ -401,44 +346,23 @@ export default function ScanProductScreen({ navigation, route }) {
         // === VISTA DE ESCANEO ===
         <View style={styles.scanContainer}>
           <CameraView
-            ref={cameraRef}
             style={styles.camera}
-            onBarcodeScanned={handleBarCodeScanned}
+            onBarcodeScanned={scanning && !loading && !alertActive ? handleBarCodeScanned : undefined}
             barcodeScannerSettings={{
-              barcodeTypes: ['ean13', 'ean8', 'code128', 'code39', 'code93', 'upc_e'],
+              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
               interval: 3000,
             }}
             cameraType="back"
             flashMode="auto"
-            onCameraReady={handleCameraReady}
           >
             <View style={styles.overlay}>
-              <TouchableOpacity 
-                style={styles.backButton}
-                onPress={handleGoBack}
-              >
-                <Ionicons name="arrow-back" size={24} color="white" />
-              </TouchableOpacity>
+              <Text style={styles.scanText}>Escanea el código de barras</Text>
               <View style={styles.scanArea}>
-                <Animated.View 
-                  style={[
-                    styles.scanLine,
-                    {
-                      transform: [
-                        {
-                          translateY: scanLineAnimation.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, 200]
-                          })
-                        }
-                      ]
-                    }
-                  ]}
-                />
+                <View style={styles.scanLine}></View>
               </View>
               {loading && (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color={colors.primary} />
+                  <ActivityIndicator size="large" color="#fff" />
                 </View>
               )}
 
@@ -576,7 +500,7 @@ export default function ScanProductScreen({ navigation, route }) {
                 value={searchQuery}
                 onChangeText={(text) => {
                   setSearchQuery(text);
-                  if (text.length > 2) {
+                  if (text.length > 1) {
                     searchProducts(text);
                   } else if (text.length === 0) {
                     setSearchResults([]);
@@ -639,7 +563,7 @@ export default function ScanProductScreen({ navigation, route }) {
                     }}
                   >
                     <Text style={styles.searchResultName}>{item.name}</Text>
-                    <Text style={styles.searchResultPrice}>Precio: $$ {formatMoney(item.price)}</Text>
+                    <Text style={styles.searchResultPrice}>Precio: $ {formatMoney(item.price)}</Text>
                     <Text style={styles.searchResultStock}>Stock: {item.stock}</Text>
                   </TouchableOpacity>
                 )}
@@ -647,7 +571,7 @@ export default function ScanProductScreen({ navigation, route }) {
                   searchQuery.length > 2 ? (
                     <Text style={styles.noResultsText}>No se encontraron productos</Text>
                   ) : searchQuery.length > 0 ? (
-                    <Text style={styles.noResultsText}>Escribe al menos 3 caracteres</Text>
+                    <Text style={styles.noResultsText}>Escribe al menos 2 caracteres</Text>
                   ) : null
                 }
                 style={{maxHeight: 300}}
@@ -664,17 +588,16 @@ export default function ScanProductScreen({ navigation, route }) {
         </View>
       </Modal>
 
-      {/* MODAL: GUARDANDO VENTA... */}
+      {/* Modal de procesamiento */}
       <Modal
-        animationType="fade"
+        visible={processingOrder}
         transparent={true}
-        visible={saleProcessing}
-        onRequestClose={() => {}} // Evitar que se cierre al tocar fuera
+        animationType="fade"
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.processingModalContainer}>
           <View style={styles.processingModalContent}>
             <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.processingText}>Guardando venta...</Text>
+            <Text style={styles.processingModalText}>Procesando venta...</Text>
           </View>
         </View>
       </Modal>
@@ -949,23 +872,23 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-   // Modal de "Guardando venta..."
-   processingModalContent: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 22,
-    borderRadius: 4,
+  processingModalContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
-  processingText: {
-    marginTop: 10,
-    fontSize: 16,
+  processingModalContent: {
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  processingModalText: {
     color: 'white',
-  },
-  backButton: {
-    position: 'absolute',
-    top: 40,
-    left: 20,
-    padding: 10,
-    zIndex: 10,
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 15,
   },
 });
