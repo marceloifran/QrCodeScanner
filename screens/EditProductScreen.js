@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  TextInput,
-  TouchableOpacity,
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  TextInput, 
+  TouchableOpacity, 
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -217,7 +217,7 @@ export default function EditProductScreen({ navigation, route }) {
 
   const handleUpdateProduct = async () => {
     if (!validateForm()) return;
-
+    
     setLoading(true);
     try {
       if (barcode !== product.barcode) {
@@ -255,7 +255,7 @@ export default function EditProductScreen({ navigation, route }) {
         notifyExpiry: notifyExpiry,
         customFields: customFields,
       });
-
+      
       Alert.alert(
         "Producto actualizado",
         "El producto se ha actualizado correctamente",
@@ -298,13 +298,13 @@ export default function EditProductScreen({ navigation, route }) {
 
   const renderCategoryModal = () => {
     return (
-      <Modal
-        visible={showCategoryModal}
+    <Modal
+      visible={showCategoryModal}
         transparent={true}
         animationType="slide"
-      >
+    >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Seleccionar categoría</Text>
               <TouchableOpacity
@@ -319,43 +319,43 @@ export default function EditProductScreen({ navigation, route }) {
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={[
+                style={[
                     styles.categoryOption,
                     category === item.id && styles.selectedCategoryOption
-                  ]}
-                  onPress={() => {
+                ]}
+                onPress={() => {
                     setCategory(item.id);
-                    setShowCategoryModal(false);
-                  }}
-                >
+                  setShowCategoryModal(false);
+                }}
+              >
                   <View style={styles.categoryOptionContent}>
                     <View style={[
                       styles.categoryIconContainer, 
                       { backgroundColor: category === item.id ? colors.primary : '#f0f0f0' }
                     ]}>
-                      <Ionicons 
+                <Ionicons 
                         name={getCategoryIcon(item.id)} 
                         size={20} 
                         color={category === item.id ? 'white' : colors.primary} 
                       />
                     </View>
-                    <Text style={[
+                <Text style={[
                       styles.categoryOptionText,
                       category === item.id && styles.selectedCategoryOptionText
-                    ]}>
+                ]}>
                       {item.name}
-                    </Text>
+                </Text>
                   </View>
                   {category === item.id && (
                     <Ionicons name="checkmark" size={24} color={colors.primary} />
                   )}
-                </TouchableOpacity>
+              </TouchableOpacity>
               )}
             />
-          </View>
         </View>
-      </Modal>
-    );
+      </View>
+    </Modal>
+  );
   };
 
   const handleDateSelection = () => {
@@ -435,7 +435,7 @@ export default function EditProductScreen({ navigation, route }) {
     
     if (selectedDate) {
       if (currentDateField === 'expiryDate') {
-        setExpiryDate(selectedDate);
+      setExpiryDate(selectedDate);
       } else if (currentDateField) {
         setCustomFields({
           ...customFields,
@@ -446,7 +446,7 @@ export default function EditProductScreen({ navigation, route }) {
   };
 
   if (hasPermission === null) {
-    return (
+  return (
       <View style={styles.cameraPermissionContainer}>
         <Text>Solicitando permiso de cámara...</Text>
       </View>
@@ -549,8 +549,8 @@ export default function EditProductScreen({ navigation, route }) {
               
               {/* Campo de texto simple */}
               {(field.type === 'text' || !field.type) && (
-                <TextInput
-                  style={styles.input}
+        <TextInput
+          style={styles.input}
                   value={customFields[fieldKey] || ''}
                   onChangeText={(text) => {
                     setCustomFields({...customFields, [fieldKey]: text});
@@ -589,7 +589,7 @@ export default function EditProductScreen({ navigation, route }) {
               
               {/* Selector de fecha */}
               {field.type === 'date' && (
-                <TouchableOpacity 
+        <TouchableOpacity
                   style={styles.input}
                   onPress={() => {
                     // Implementar selector de fecha
@@ -611,8 +611,8 @@ export default function EditProductScreen({ navigation, route }) {
                       customFields[fieldKey] === true && styles.selectedBooleanOption
                     ]}
                     onPress={() => setCustomFields({...customFields, [fieldKey]: true})}
-                  >
-                    <Text style={[
+        >
+          <Text style={[
                       styles.booleanOptionText,
                       customFields[fieldKey] === true && styles.selectedBooleanOptionText
                     ]}>Sí</Text>
@@ -652,8 +652,8 @@ export default function EditProductScreen({ navigation, route }) {
                         customFields[fieldKey] === option && styles.selectedSelectOptionText
                       ]}>
                         {option}
-                      </Text>
-                    </TouchableOpacity>
+          </Text>
+        </TouchableOpacity>
                   ))}
                 </View>
               )}
@@ -727,13 +727,13 @@ export default function EditProductScreen({ navigation, route }) {
             )}
           </View>
           <Text style={styles.label}>Precio</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Precio"
-            value={price}
+        <TextInput
+          style={styles.input}
+          placeholder="Precio"
+          value={price}
             onChangeText={handlePriceChange}
-            keyboardType="decimal-pad"
-          />
+          keyboardType="decimal-pad"
+        />
           {price ? (
             <>
               <View style={styles.percentageHeader}>
@@ -777,14 +777,14 @@ export default function EditProductScreen({ navigation, route }) {
           ) : null}
 
           <Text style={styles.label}>Stock</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Stock"
-            value={stock}
-            onChangeText={setStock}
-            keyboardType="numeric"
-          />
-
+        <TextInput
+          style={styles.input}
+          placeholder="Stock"
+          value={stock}
+          onChangeText={setStock}
+          keyboardType="numeric"
+        />
+        
           <View style={styles.formGroup}>
             <Text style={styles.label}>Umbral de Stock Bajo</Text>
             <TextInput
@@ -796,26 +796,26 @@ export default function EditProductScreen({ navigation, route }) {
             />
             <Text style={styles.helperText}>
               Notificar cuando el stock sea menor o igual a este valor
-            </Text>
+          </Text>
           </View>
-
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity
+        
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity 
               style={[
                 styles.button,
                 styles.saveButton,
                 { flex: 1 },
                 loading && { opacity: 0.7 },
               ]}
-              onPress={handleUpdateProduct}
-              disabled={loading}
-            >
-              {loading ? (
+            onPress={handleUpdateProduct}
+            disabled={loading}
+          >
+            {loading ? (
                 <ActivityIndicator color="white" size="small" />
-              ) : (
+            ) : (
                 <Text style={styles.buttonText}>Guardar Cambios</Text>
-              )}
-            </TouchableOpacity>
+            )}
+          </TouchableOpacity>
           </View>
 
           {renderCustomFields()}
@@ -823,7 +823,7 @@ export default function EditProductScreen({ navigation, route }) {
       </View>
       {renderCategoryModal()}
       {renderBarcodeScanner()}
-    </ScrollView>
+      </ScrollView>
   );
 }
 
@@ -1313,7 +1313,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-});
+}); 
 
 const getCategoryName = (categoryId, categoriesList) => {
   const category = categoriesList.find(cat => cat.id === categoryId);

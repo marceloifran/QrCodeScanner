@@ -13,7 +13,6 @@ import ProductListScreen from '../screens/ProductListScreen';
 import ScanProductScreen from '../screens/ScanProductScreen';
 import SalesHistoryScreen from '../screens/SalesHistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import NotificationsScreen from '../screens/NotificationsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -79,14 +78,13 @@ export default function TabNavigator() {
         headerTitleStyle: {
           fontWeight: 'bold',
         },
-        // Agregar la campanita de notificaciones en el header solo en el Dashboard
         headerRight: () => {
           if (route.name === 'Dashboard') {
             return (
               <TouchableOpacity 
                 style={styles.notificationButton}
                 onPress={() => {
-                  // Navegar a la pantalla de notificaciones
+                  // Navegar a la pantalla de notificaciones (ahora en AppNavigator)
                   navigation.navigate('Notifications');
                 }}
               >
@@ -141,19 +139,6 @@ export default function TabNavigator() {
         options={{ 
           title: 'Perfil',
           headerTitle: 'Mi Perfil'
-        }} 
-      />
-      {/* Pantalla de Notificaciones (No visible en tabs, pero accesible desde la campanita) */}
-      <Tab.Screen 
-        name="Notifications" 
-        component={NotificationsScreen} 
-        options={{ 
-          title: 'Notificaciones',
-          tabBarButton: () => null, // Ocultar de la barra de pestañas
-          headerStyle: {
-            backgroundColor: colors.primary,
-          },
-          headerTintColor: '#fff',
         }} 
       />
     </Tab.Navigator>

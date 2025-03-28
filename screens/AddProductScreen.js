@@ -53,8 +53,8 @@ export default function AddProductScreen({ navigation }) {
   // Solicitar permisos al montar el componente
   useEffect(() => {
     (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === 'granted');
     })();
   }, []);
 
@@ -151,7 +151,7 @@ export default function AddProductScreen({ navigation }) {
             }
             setCustomFields(initialCustomFields);
           }
-        } else {
+    } else {
           // Si no existe configuración, crear una basada en la industria
           const defaultConfig = {
             industry: userIndustry,
@@ -249,14 +249,14 @@ export default function AddProductScreen({ navigation }) {
       // Si hay un código de barras, verificar si ya existe
       if (barcode) {
         const productsRef = collection(db, 'products');
-        const q = query(
+      const q = query(
           productsRef, 
-          where('barcode', '==', barcode),
-          where('userId', '==', auth.currentUser.uid)
-        );
-        const querySnapshot = await getDocs(q);
-        
-        if (!querySnapshot.empty) {
+        where('barcode', '==', barcode),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
           Alert.alert(
             'Producto existente',
             'Ya existe un producto con este código de barras. ¿Deseas actualizar su stock?',
@@ -269,13 +269,13 @@ export default function AddProductScreen({ navigation }) {
               {
                 text: 'Actualizar',
                 onPress: async () => {
-                  setLoading(false);
+        setLoading(false);
                   navigation.navigate('EditProduct', { productId: querySnapshot.docs[0].id });
                 }
               }
             ]
           );
-          return;
+        return;
         }
       }
       
@@ -304,7 +304,7 @@ export default function AddProductScreen({ navigation }) {
       await addDoc(collection(db, 'products'), productData);
       
       Alert.alert(
-        'Éxito',
+        'Éxito', 
         'Producto agregado correctamente',
         [
           {
@@ -559,7 +559,7 @@ export default function AddProductScreen({ navigation }) {
   }
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
@@ -567,29 +567,29 @@ export default function AddProductScreen({ navigation }) {
         
         <View style={styles.formGroup}>
           <Text style={styles.label}>Código de Barras (opcional)</Text>
-          <View style={styles.barcodeContainer}>
-            <TextInput
+        <View style={styles.barcodeContainer}>
+          <TextInput
               style={styles.barcodeInput}
-              value={barcode}
-              onChangeText={setBarcode}
+            value={barcode}
+            onChangeText={setBarcode}
               placeholder="Escanea o ingresa el código"
               keyboardType="numeric"
-            />
-            <TouchableOpacity 
-              style={styles.scanButton}
+          />
+          <TouchableOpacity 
+            style={styles.scanButton}
               onPress={() => setScanning(true)}
-            >
+          >
               <Ionicons name="scan-outline" size={24} color="white" />
-            </TouchableOpacity>
+          </TouchableOpacity>
           </View>
         </View>
         
         <View style={styles.formGroup}>
           <Text style={styles.label}>Nombre del Producto</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
             placeholder="Ingresa el nombre"
           />
         </View>
@@ -617,7 +617,7 @@ export default function AddProductScreen({ navigation }) {
               
               <View style={styles.percentageButtonsContainer}>
                 {commonPercentages.map(percent => (
-                  <TouchableOpacity
+        <TouchableOpacity
                     key={percent}
                     style={[
                       styles.percentageButton,
@@ -632,8 +632,8 @@ export default function AddProductScreen({ navigation }) {
                       ]}
                     >
                       {percent}%
-                    </Text>
-                  </TouchableOpacity>
+          </Text>
+        </TouchableOpacity>
                 ))}
               </View>
             </>
@@ -642,8 +642,8 @@ export default function AddProductScreen({ navigation }) {
         
         <View style={styles.formGroup}>
           <Text style={styles.label}>Stock</Text>
-          <TextInput
-            style={styles.input}
+        <TextInput
+          style={styles.input}
             value={stock}
             onChangeText={setStock}
             placeholder="Ingresa la cantidad"
@@ -653,12 +653,12 @@ export default function AddProductScreen({ navigation }) {
         
         <View style={styles.formGroup}>
           <Text style={styles.label}>Umbral de Stock Bajo (opcional)</Text>
-          <TextInput
-            style={styles.input}
+        <TextInput
+          style={styles.input}
             value={lowStockThreshold}
             onChangeText={setLowStockThreshold}
             placeholder="Notificar cuando el stock sea menor a"
-            keyboardType="numeric"
+          keyboardType="numeric"
           />
         </View>
         
@@ -678,10 +678,10 @@ export default function AddProductScreen({ navigation }) {
         
         <View style={styles.formGroup}>
           <Text style={styles.label}>Fecha de Vencimiento (opcional)</Text>
-          <TouchableOpacity
-            style={styles.dateSelector}
-            onPress={() => setShowDatePicker(true)}
-          >
+        <TouchableOpacity
+          style={styles.dateSelector}
+          onPress={() => setShowDatePicker(true)}
+        >
             <Text style={styles.dateText}>
               {expiryDate.toLocaleDateString()}
             </Text>
@@ -707,7 +707,7 @@ export default function AddProductScreen({ navigation }) {
         
         {renderCustomFields()}
         
-        <TouchableOpacity
+        <TouchableOpacity 
           style={[styles.addButton, loading && { opacity: 0.7 }]}
           onPress={handleAddProduct}
           disabled={loading}
@@ -729,30 +729,30 @@ export default function AddProductScreen({ navigation }) {
           visible={scanning}
           onRequestClose={() => setScanning(false)}
         >
-          <View style={StyleSheet.absoluteFill}>
-            <CameraView
+        <View style={StyleSheet.absoluteFill}>
+          <CameraView
               style={StyleSheet.absoluteFillObject}
-              onBarcodeScanned={handleBarCodeScanned}
+            onBarcodeScanned={handleBarCodeScanned}
               cameraType="back"
               flashMode="auto"
-            >
+          >
               <View style={styles.scannerOverlay}>
                 <View style={styles.scannerTarget}>
-                  <View style={styles.scanLine} />
-                </View>
-                <Text style={styles.scannerText}>Apunta al código de barras</Text>
-                <TouchableOpacity
-                  style={styles.cancelScanButton}
-                  onPress={() => setScanning(false)}
-                >
-                  <Text style={styles.cancelScanButtonText}>Cancelar</Text>
-                </TouchableOpacity>
+                <View style={styles.scanLine} />
               </View>
-            </CameraView>
-          </View>
+                <Text style={styles.scannerText}>Apunta al código de barras</Text>
+              <TouchableOpacity 
+                  style={styles.cancelScanButton}
+                onPress={() => setScanning(false)}
+              >
+                  <Text style={styles.cancelScanButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </CameraView>
+        </View>
         </Modal>
       )}
-      
+
       {showDatePicker && (
         <DateTimePicker
           testID="dateTimePicker"
@@ -1182,4 +1182,4 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: 'bold',
   },
-});
+}); 

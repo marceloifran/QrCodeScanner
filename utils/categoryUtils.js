@@ -92,86 +92,104 @@ export const INDUSTRY_CATEGORIES = {
   ]
 };
 
-// Función para obtener las categorías según la industria
-export const getCategoriesForIndustry = (industry) => {
-  // Categorías por defecto para todas las industrias
-  const commonCategories = [
+// Función para obtener categorías según la industria
+export const getCategoriesForIndustry = (industryType) => {
+  // Categorías base que aparecen en todas las industrias
+  const baseCategories = [
     { id: 'general', name: 'General', icon: 'cube-outline' },
     { id: 'offers', name: 'Ofertas', icon: 'pricetag-outline' },
     { id: 'new', name: 'Nuevos', icon: 'star-outline' },
-    { id: 'popular', name: 'Populares', icon: 'flame-outline' },
+    { id: 'popular', name: 'Populares', icon: 'flame-outline' }
   ];
-  
+
   // Categorías específicas por industria
-  const industryCategories = {
-    'general': [
-      { id: 'electronics', name: 'Electrónica', icon: 'hardware-chip-outline' },
-      { id: 'home', name: 'Hogar', icon: 'home-outline' },
-      { id: 'clothing', name: 'Ropa', icon: 'shirt-outline' },
-      { id: 'food', name: 'Alimentos', icon: 'restaurant-outline' },
-    ],
-    'grocery': [
-      { id: 'dairy', name: 'Lácteos', icon: 'nutrition-outline' },
-      { id: 'meat', name: 'Carnes', icon: 'restaurant-outline' },
-      { id: 'fruits', name: 'Frutas y Verduras', icon: 'leaf-outline' },
-      { id: 'beverages', name: 'Bebidas', icon: 'wine-outline' },
-      { id: 'bakery', name: 'Panadería', icon: 'fast-food-outline' },
-      { id: 'cleaning', name: 'Limpieza', icon: 'sparkles-outline' },
-      { id: 'personal', name: 'Cuidado Personal', icon: 'body-outline' },
-    ],
-    'clothing': [
-      { id: 'shirts', name: 'Camisas', icon: 'shirt-outline' },
-      { id: 'pants', name: 'Pantalones', icon: 'cut-outline' },
-      { id: 'shoes', name: 'Calzado', icon: 'footsteps-outline' },
-      { id: 'accessories', name: 'Accesorios', icon: 'watch-outline' },
-    ],
-    'pharmacy': [
-      { id: 'medications', name: 'Medicamentos', icon: 'medical-outline' },
-      { id: 'vitamins', name: 'Vitaminas', icon: 'fitness-outline' },
-      { id: 'personal', name: 'Cuidado Personal', icon: 'body-outline' },
-      { id: 'beauty', name: 'Belleza', icon: 'color-palette-outline' },
-    ],
-    'electronics': [
-      { id: 'smartphones', name: 'Smartphones', icon: 'phone-portrait-outline' },
-      { id: 'computers', name: 'Computadoras', icon: 'laptop-outline' },
-      { id: 'accessories', name: 'Accesorios', icon: 'watch-outline' },
-      { id: 'audio', name: 'Audio', icon: 'headset-outline' },
-    ],
-    'restaurant': [
-      { id: 'starters', name: 'Entradas', icon: 'restaurant-outline' },
-      { id: 'main', name: 'Platos Principales', icon: 'fast-food-outline' },
-      { id: 'desserts', name: 'Postres', icon: 'ice-cream-outline' },
-      { id: 'beverages', name: 'Bebidas', icon: 'wine-outline' },
-    ],
-    'bakery': [
-      { id: 'bread', name: 'Panes', icon: 'fast-food-outline' },
-      { id: 'pastries', name: 'Pastelería', icon: 'ice-cream-outline' },
-      { id: 'cakes', name: 'Tortas', icon: 'cafe-outline' },
-      { id: 'cookies', name: 'Galletas', icon: 'pizza-outline' },
-    ],
-    'hardware': [
-      { id: 'tools', name: 'Herramientas', icon: 'construct-outline' },
-      { id: 'materials', name: 'Materiales', icon: 'cube-outline' },
-      { id: 'electrical', name: 'Eléctricos', icon: 'flash-outline' },
-      { id: 'plumbing', name: 'Plomería', icon: 'water-outline' },
-    ],
-    'beauty': [
-      { id: 'skincare', name: 'Cuidado de la Piel', icon: 'water-outline' },
-      { id: 'makeup', name: 'Maquillaje', icon: 'color-palette-outline' },
-      { id: 'hair', name: 'Cabello', icon: 'cut-outline' },
-      { id: 'nails', name: 'Uñas', icon: 'hand-left-outline' },
-    ],
-    'bookstore': [
-      { id: 'fiction', name: 'Ficción', icon: 'book-outline' },
-      { id: 'nonfiction', name: 'No Ficción', icon: 'document-text-outline' },
-      { id: 'children', name: 'Infantil', icon: 'happy-outline' },
-      { id: 'academic', name: 'Académicos', icon: 'school-outline' },
-    ],
-    'other': commonCategories,
-  };
-  
-  // Devolver las categorías específicas de la industria o las comunes si no hay específicas
-  return industryCategories[industry] || commonCategories;
+  switch (industryType) {
+    case 'general':
+      return [
+        ...baseCategories,
+        { id: 'electronics', name: 'Electrónica', icon: 'hardware-chip-outline' },
+        { id: 'home', name: 'Hogar', icon: 'home-outline' },
+        { id: 'clothing', name: 'Ropa', icon: 'shirt-outline' },
+        { id: 'food', name: 'Alimentos', icon: 'restaurant-outline' },
+      ];
+    case 'grocery':
+      return [
+        ...baseCategories,
+        { id: 'dairy', name: 'Lácteos', icon: 'nutrition-outline' },
+        { id: 'meat', name: 'Carnes', icon: 'restaurant-outline' },
+        { id: 'fruits', name: 'Frutas y Verduras', icon: 'leaf-outline' },
+        { id: 'beverages', name: 'Bebidas', icon: 'wine-outline' },
+        { id: 'bakery', name: 'Panadería', icon: 'fast-food-outline' },
+        { id: 'cleaning', name: 'Limpieza', icon: 'sparkles-outline' },
+        { id: 'personal', name: 'Cuidado Personal', icon: 'body-outline' },
+      ];
+    case 'clothing':
+      return [
+        ...baseCategories,
+        { id: 'shirts', name: 'Camisas', icon: 'shirt-outline' },
+        { id: 'pants', name: 'Pantalones', icon: 'cut-outline' },
+        { id: 'shoes', name: 'Calzado', icon: 'footsteps-outline' },
+        { id: 'accessories', name: 'Accesorios', icon: 'watch-outline' },
+      ];
+    case 'pharmacy':
+      return [
+        ...baseCategories,
+        { id: 'medications', name: 'Medicamentos', icon: 'medical-outline' },
+        { id: 'vitamins', name: 'Vitaminas', icon: 'fitness-outline' },
+        { id: 'personal', name: 'Cuidado Personal', icon: 'body-outline' },
+        { id: 'beauty', name: 'Belleza', icon: 'color-palette-outline' },
+      ];
+    case 'electronics':
+      return [
+        ...baseCategories,
+        { id: 'smartphones', name: 'Smartphones', icon: 'phone-portrait-outline' },
+        { id: 'computers', name: 'Computadoras', icon: 'laptop-outline' },
+        { id: 'accessories', name: 'Accesorios', icon: 'watch-outline' },
+        { id: 'audio', name: 'Audio', icon: 'headset-outline' },
+      ];
+    case 'restaurant':
+      return [
+        ...baseCategories,
+        { id: 'starters', name: 'Entradas', icon: 'restaurant-outline' },
+        { id: 'main', name: 'Platos Principales', icon: 'fast-food-outline' },
+        { id: 'desserts', name: 'Postres', icon: 'ice-cream-outline' },
+        { id: 'beverages', name: 'Bebidas', icon: 'wine-outline' },
+      ];
+    case 'bakery':
+      return [
+        ...baseCategories,
+        { id: 'bread', name: 'Panes', icon: 'fast-food-outline' },
+        { id: 'pastries', name: 'Pastelería', icon: 'ice-cream-outline' },
+        { id: 'cakes', name: 'Tortas', icon: 'cafe-outline' },
+        { id: 'cookies', name: 'Galletas', icon: 'pizza-outline' },
+      ];
+    case 'hardware':
+      return [
+        ...baseCategories,
+        { id: 'tools', name: 'Herramientas', icon: 'construct-outline' },
+        { id: 'materials', name: 'Materiales', icon: 'cube-outline' },
+        { id: 'electrical', name: 'Eléctricos', icon: 'flash-outline' },
+        { id: 'plumbing', name: 'Plomería', icon: 'water-outline' },
+      ];
+    case 'beauty':
+      return [
+        ...baseCategories,
+        { id: 'skincare', name: 'Cuidado de la Piel', icon: 'water-outline' },
+        { id: 'makeup', name: 'Maquillaje', icon: 'color-palette-outline' },
+        { id: 'hair', name: 'Cabello', icon: 'cut-outline' },
+        { id: 'nails', name: 'Uñas', icon: 'hand-left-outline' },
+      ];
+    case 'bookstore':
+      return [
+        ...baseCategories,
+        { id: 'fiction', name: 'Ficción', icon: 'book-outline' },
+        { id: 'nonfiction', name: 'No Ficción', icon: 'document-text-outline' },
+        { id: 'children', name: 'Infantil', icon: 'happy-outline' },
+        { id: 'academic', name: 'Académicos', icon: 'school-outline' },
+      ];
+    default:
+      return baseCategories;
+  }
 };
 
 // Función para obtener el nombre de una categoría por su ID
@@ -216,282 +234,324 @@ export const getCategoryIcon = (categoryId) => {
   return defaultIcons[categoryId] || 'cube-outline'; // Icono por defecto
 };
 
-// Función para obtener los campos personalizados según la industria
+// Función para obtener campos personalizados según la industria
 export const getCustomFieldsForIndustry = (industryType) => {
+  // Campos base que aparecen en todas las industrias
+  const baseFields = [
+    { 
+      id: 'barcode', 
+      name: 'Código de Barras', 
+      type: 'text',
+      required: false,
+      showInList: true,
+      order: 1
+    },
+    { 
+      id: 'price', 
+      name: 'Precio', 
+      type: 'number',
+      required: true,
+      showInList: true,
+      order: 2
+    },
+    { 
+      id: 'stock', 
+      name: 'Stock', 
+      type: 'number',
+      required: true,
+      showInList: true,
+      order: 3
+    },
+    { 
+      id: 'category', 
+      name: 'Categoría', 
+      type: 'select',
+      required: true,
+      showInList: true,
+      order: 4
+    }
+  ];
+
+  // Campos específicos por industria
   switch (industryType) {
-    case 'clothing':
-      return {
-        size: { 
-          enabled: true, 
-          required: false, 
-          label: 'Talle',
-          type: 'select',
-          options: ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Único']
-        },
-        color: { 
-          enabled: true, 
-          required: false, 
-          label: 'Color',
-          type: 'select',
-          options: ['Negro', 'Blanco', 'Rojo', 'Azul', 'Verde', 'Amarillo', 'Rosa', 'Gris', 'Marrón', 'Otro']
-        },
-        material: { 
-          enabled: true, 
-          required: false, 
-          label: 'Material',
-          type: 'select',
-          options: ['Algodón', 'Poliéster', 'Lana', 'Lino', 'Seda', 'Cuero', 'Mezclilla', 'Otro']
-        },
-        brand: { 
-          enabled: true, 
-          required: false, 
-          label: 'Marca',
-          type: 'text'
-        },
-        season: { 
-          enabled: true, 
-          required: false, 
-          label: 'Temporada',
-          type: 'select',
-          options: ['Primavera/Verano', 'Otoño/Invierno', 'Todo el año']
-        }
-      };
-    case 'pharmacy':
-      return {
-        expirationDate: { 
-          enabled: true, 
-          required: true, 
-          label: 'Fecha de Vencimiento',
-          type: 'date'
-        },
-        activeIngredient: { 
-          enabled: true, 
-          required: false, 
-          label: 'Principio Activo',
-          type: 'text'
-        },
-        laboratory: { 
-          enabled: true, 
-          required: false, 
-          label: 'Laboratorio',
-          type: 'text'
-        },
-        prescription: { 
-          enabled: true, 
-          required: false, 
-          label: 'Requiere Receta',
-          type: 'boolean'
-        }
-      };
     case 'grocery':
-      return {
-        expirationDate: { 
-          enabled: true, 
-          required: true, 
-          label: 'Fecha de Vencimiento',
-          type: 'date'
+      return [
+        ...baseFields,
+        { 
+          id: 'expirationDate', 
+          name: 'Fecha de Vencimiento', 
+          type: 'date',
+          required: false,
+          showInList: true,
+          order: 5
         },
-        weight: { 
-          enabled: true, 
-          required: false, 
-          label: 'Peso/Volumen',
-          type: 'text'
+        { 
+          id: 'brand', 
+          name: 'Marca', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 6
         },
-        brand: { 
-          enabled: true, 
-          required: false, 
-          label: 'Marca',
-          type: 'text'
-        },
-        origin: { 
-          enabled: true, 
-          required: false, 
-          label: 'Origen',
-          type: 'text'
+        { 
+          id: 'weight', 
+          name: 'Peso/Volumen', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 7
         }
-      };
+      ];
+      
+    case 'clothing':
+      return [
+        ...baseFields,
+        { 
+          id: 'size', 
+          name: 'Talla', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 5
+        },
+        { 
+          id: 'color', 
+          name: 'Color', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 6
+        },
+        { 
+          id: 'material', 
+          name: 'Material', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 7
+        },
+        { 
+          id: 'brand', 
+          name: 'Marca', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 8
+        }
+      ];
+      
+    case 'pharmacy':
+      return [
+        ...baseFields,
+        { 
+          id: 'expirationDate', 
+          name: 'Fecha de Vencimiento', 
+          type: 'date',
+          required: true,
+          showInList: true,
+          order: 5
+        },
+        { 
+          id: 'laboratory', 
+          name: 'Laboratorio', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 6
+        },
+        { 
+          id: 'activeIngredient', 
+          name: 'Principio Activo', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 7
+        },
+        { 
+          id: 'requiresPrescription', 
+          name: 'Requiere Receta', 
+          type: 'boolean',
+          required: true,
+          showInList: true,
+          order: 8
+        }
+      ];
+      
     case 'electronics':
-      return {
-        brand: { 
-          enabled: true, 
-          required: false, 
-          label: 'Marca',
-          type: 'text'
+      return [
+        ...baseFields,
+        { 
+          id: 'brand', 
+          name: 'Marca', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 5
         },
-        model: { 
-          enabled: true, 
-          required: false, 
-          label: 'Modelo',
-          type: 'text'
+        { 
+          id: 'model', 
+          name: 'Modelo', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 6
         },
-        warranty: { 
-          enabled: true, 
-          required: false, 
-          label: 'Garantía',
-          type: 'text'
-        },
-        specs: { 
-          enabled: true, 
-          required: false, 
-          label: 'Especificaciones',
-          type: 'textarea'
+        { 
+          id: 'warranty', 
+          name: 'Garantía (meses)', 
+          type: 'number',
+          required: false,
+          showInList: false,
+          order: 7
         }
-      };
+      ];
+      
     case 'restaurant':
-      return {
-        ingredients: { 
-          enabled: true, 
-          required: false, 
-          label: 'Ingredientes',
-          type: 'textarea'
+      return [
+        ...baseFields,
+        { 
+          id: 'ingredients', 
+          name: 'Ingredientes', 
+          type: 'textarea',
+          required: false,
+          showInList: false,
+          order: 5
         },
-        allergens: { 
-          enabled: true, 
-          required: false, 
-          label: 'Alérgenos',
-          type: 'textarea'
+        { 
+          id: 'preparationTime', 
+          name: 'Tiempo de Preparación (min)', 
+          type: 'number',
+          required: false,
+          showInList: false,
+          order: 6
         },
-        preparationTime: { 
-          enabled: true, 
-          required: false, 
-          label: 'Tiempo de Preparación',
-          type: 'text'
-        },
-        calories: { 
-          enabled: true, 
-          required: false, 
-          label: 'Calorías',
-          type: 'number'
+        { 
+          id: 'allergens', 
+          name: 'Alérgenos', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 7
         }
-      };
+      ];
+      
     case 'bakery':
-      return {
-        ingredients: { 
-          enabled: true, 
-          required: false, 
-          label: 'Ingredientes',
-          type: 'textarea'
+      return [
+        ...baseFields,
+        { 
+          id: 'ingredients', 
+          name: 'Ingredientes', 
+          type: 'textarea',
+          required: false,
+          showInList: false,
+          order: 5
         },
-        allergens: { 
-          enabled: true, 
-          required: false, 
-          label: 'Alérgenos',
-          type: 'textarea'
+        { 
+          id: 'expirationDays', 
+          name: 'Días de Duración', 
+          type: 'number',
+          required: false,
+          showInList: false,
+          order: 6
         },
-        expirationDate: { 
-          enabled: true, 
-          required: true, 
-          label: 'Fecha de Vencimiento',
-          type: 'date'
-        },
-        weight: { 
-          enabled: true, 
-          required: false, 
-          label: 'Peso',
-          type: 'text'
+        { 
+          id: 'allergens', 
+          name: 'Alérgenos', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 7
         }
-      };
+      ];
+      
     case 'hardware':
-      return {
-        brand: { 
-          enabled: true, 
-          required: false, 
-          label: 'Marca',
-          type: 'text'
+      return [
+        ...baseFields,
+        { 
+          id: 'brand', 
+          name: 'Marca', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 5
         },
-        material: { 
-          enabled: true, 
-          required: false, 
-          label: 'Material',
-          type: 'text'
+        { 
+          id: 'material', 
+          name: 'Material', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 6
         },
-        dimensions: { 
-          enabled: true, 
-          required: false, 
-          label: 'Dimensiones',
-          type: 'text'
-        },
-        warranty: { 
-          enabled: true, 
-          required: false, 
-          label: 'Garantía',
-          type: 'text'
+        { 
+          id: 'dimensions', 
+          name: 'Dimensiones', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 7
         }
-      };
+      ];
+      
     case 'beauty':
-      return {
-        brand: { 
-          enabled: true, 
-          required: false, 
-          label: 'Marca',
-          type: 'text'
+      return [
+        ...baseFields,
+        { 
+          id: 'brand', 
+          name: 'Marca', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 5
         },
-        expirationDate: { 
-          enabled: true, 
-          required: true, 
-          label: 'Fecha de Vencimiento',
-          type: 'date'
+        { 
+          id: 'expirationDate', 
+          name: 'Fecha de Vencimiento', 
+          type: 'date',
+          required: false,
+          showInList: true,
+          order: 6
         },
-        ingredients: { 
-          enabled: true, 
-          required: false, 
-          label: 'Ingredientes',
-          type: 'textarea'
-        },
-        volume: { 
-          enabled: true, 
-          required: false, 
-          label: 'Volumen/Peso',
-          type: 'text'
+        { 
+          id: 'ingredients', 
+          name: 'Ingredientes', 
+          type: 'textarea',
+          required: false,
+          showInList: false,
+          order: 7
         }
-      };
+      ];
+      
     case 'bookstore':
-      return {
-        author: { 
-          enabled: true, 
-          required: false, 
-          label: 'Autor',
-          type: 'text'
+      return [
+        ...baseFields,
+        { 
+          id: 'author', 
+          name: 'Autor', 
+          type: 'text',
+          required: false,
+          showInList: true,
+          order: 5
         },
-        publisher: { 
-          enabled: true, 
-          required: false, 
-          label: 'Editorial',
-          type: 'text'
+        { 
+          id: 'publisher', 
+          name: 'Editorial', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 6
         },
-        isbn: { 
-          enabled: true, 
-          required: false, 
-          label: 'ISBN',
-          type: 'text'
-        },
-        pages: { 
-          enabled: true, 
-          required: false, 
-          label: 'Páginas',
-          type: 'number'
+        { 
+          id: 'isbn', 
+          name: 'ISBN', 
+          type: 'text',
+          required: false,
+          showInList: false,
+          order: 7
         }
-      };
+      ];
+      
     default:
-      return {
-        brand: { 
-          enabled: true, 
-          required: false, 
-          label: 'Marca',
-          type: 'text'
-        },
-        model: { 
-          enabled: true, 
-          required: false, 
-          label: 'Modelo',
-          type: 'text'
-        },
-        description: { 
-          enabled: true, 
-          required: false, 
-          label: 'Descripción',
-          type: 'textarea'
-        }
-      };
+      return baseFields;
   }
 }; 
