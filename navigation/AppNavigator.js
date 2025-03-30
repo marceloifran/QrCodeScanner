@@ -21,6 +21,9 @@ import ProfileScreen from '../screens/ProfileScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import BusinessSettingsScreen from '../screens/BusinessSettingsScreen';
+import TabNavigator from './TabNavigator'; // Asegurate de que el path sea correcto
+import NewCartScreen from '../screens/NewCartScreen';
+
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -260,8 +263,8 @@ const ScanStack = () => (
       name="ScanScreen" 
       component={ScanProductScreen} 
       options={{ 
+        headerShown: false,
         title: 'Nueva Venta',
-        headerShown: true,
         headerStyle: {
           backgroundColor: colors.primary,
         },
@@ -293,9 +296,81 @@ const AppNavigator = () => {
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
-          <Stack.Screen name="Main" component={MainNavigator} />
+          <>
+            <Stack.Screen name="Main" component={TabNavigator} />
+            <Stack.Screen 
+              name="Notifications" 
+              component={NotificationsScreen} 
+              options={{ 
+                headerShown: true,
+                title: 'Notificaciones',
+                headerStyle: {
+                  backgroundColor: colors.primary,
+                },
+                headerTintColor: '#fff',
+              }} 
+            />
+            <Stack.Screen 
+              name="ScanForStock" 
+              component={ScanForStockScreen} 
+              options={{ 
+                headerShown: false,
+              }} 
+            />
+            <Stack.Screen 
+              name="BusinessSettings" 
+              component={BusinessSettingsScreen} 
+              options={{ 
+                headerShown: true,
+                title: 'Configuración del Negocio',
+                headerStyle: {
+                  backgroundColor: colors.primary,
+                },
+                headerTintColor: '#fff',
+              }} 
+            />
+            <Stack.Screen 
+              name="AddProduct" 
+              component={AddProductScreen} 
+              options={{ 
+                headerShown: true,
+                title: 'Agregar Producto',
+                headerStyle: {
+                  backgroundColor: colors.primary,
+                },
+                headerTintColor: '#fff',
+              }} 
+            />
+            <Stack.Screen 
+              name="EditProduct" 
+              component={EditProductScreen} 
+              options={{ 
+                headerShown: true,
+                title: 'Editar Producto',
+                headerStyle: {
+                  backgroundColor: colors.primary,
+                },
+                headerTintColor: '#fff',
+              }} 
+            />
+            <Stack.Screen 
+              name="NewCart" 
+              component={NewCartScreen} 
+              options={{ 
+                headerShown: true,
+                title: 'Nueva Venta',
+                headerStyle: {
+                  backgroundColor: colors.primary,
+                },
+                headerTintColor: '#fff',
+              }} 
+            />
+          </>
         ) : (
-          <Stack.Screen name="Auth" component={AuthNavigator} />
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
         )}
       </Stack.Navigator>
     </NavigationContainer>

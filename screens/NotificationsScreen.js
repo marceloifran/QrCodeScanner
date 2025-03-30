@@ -12,7 +12,6 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
-import { CommonActions } from '@react-navigation/native';
 
 export default function NotificationsScreen({ navigation }) {
   const [notifications, setNotifications] = useState([]);
@@ -65,36 +64,37 @@ export default function NotificationsScreen({ navigation }) {
     }
   };
 
+  // Simplificamos la navegación directamente a la pantalla de edición del producto
   const handleNotificationPress = (notification) => {
-    // Usar CommonActions para navegar a través de diferentes navegadores
-    navigation.dispatch(
-      CommonActions.navigate({
-        name: 'Products', // Primero navegar a la pestaña de Productos
-        params: {
-          screen: 'EditProduct', // Luego a la pantalla de edición dentro de ProductsStack
-          params: { productId: notification.productId }
-        }
-      })
-    );
+    if (notification.type === 'low_stock') {
+      // Navegar directamente a la pantalla de edición del producto
+      navigation.navigate('EditProduct', { productId: notification.productId });
+    }
   };
 
-  const renderItem = ({ item }) => (
+  const renderNotificationItem = ({ item }) => (
     <TouchableOpacity 
       style={styles.notificationItem}
       onPress={() => handleNotificationPress(item)}
     >
       <View style={styles.notificationIcon}>
         <Ionicons 
-          name="alert-circle" 
+          name="alert-circle-outline" 
           size={24} 
-          color={item.stock === 0 ? colors.error : colors.warning} 
+          color={colors.warning} 
         />
       </View>
       <View style={styles.notificationContent}>
         <Text style={styles.notificationTitle}>{item.title}</Text>
         <Text style={styles.notificationMessage}>{item.message}</Text>
         <Text style={styles.notificationDate}>
-          {item.date.toLocaleDateString()} {item.date.toLocaleTimeString()}
+          {item.date.toLocaleDateString('es-AR', { 
+            day: '2-digit', 
+            month: '2-digit', 
+            year: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+          })}
         </Text>
       </View>
     </TouchableOpacity>
@@ -103,11 +103,14 @@ export default function NotificationsScreen({ navigation }) {
   return (
     <View style={styles.container}>
       {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
+        <View style={styles.loader}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ marginTop: 10 }}>Cargando notificaciones...</Text>
+        </View>
       ) : (
         <FlatList
           data={notifications}
-          renderItem={renderItem}
+          renderItem={renderNotificationItem}
           keyExtractor={item => item.id}
           contentContainerStyle={styles.listContainer}
           ListEmptyComponent={

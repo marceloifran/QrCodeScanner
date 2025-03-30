@@ -163,16 +163,13 @@ export default function DashboardScreen({ navigation }) {
     checkNotifications();
   };
   
-  const goToNewSale = () => {
-    navigation.navigate('Scan', {
-      screen: 'ScanScreen'
-    });
-  };
+const goToNewSale = () => {
+  navigation.navigate('ScanProduct');
+};
+
   
   const goToScanStock = () => {
-    navigation.navigate('Products', {
-      screen: 'ScanForStock'
-    });
+    navigation.navigate('ScanForStock');
   };
   
   const navigateToCategory = (categoryId) => {
@@ -183,16 +180,12 @@ export default function DashboardScreen({ navigation }) {
   };
   
   const viewAllSales = () => {
-    navigation.navigate('Sales', {
-      screen: 'SalesHistory'
-    });
+    navigation.navigate('SalesHistory');
   };
   
   const viewLowStockProducts = () => {
-    navigation.navigate('Products', {
-      screen: 'ProductList',
-      params: { filter: 'lowStock' }
-    });
+    navigation.navigate('ProductList', { filter: 'lowStock' });
+
   };
   
   const viewInventoryValue = () => {
@@ -340,13 +333,7 @@ export default function DashboardScreen({ navigation }) {
   
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
-      
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Dashboard</Text>
-        {renderNotificationBell()}
-      </View>
-      
+    <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -360,6 +347,7 @@ export default function DashboardScreen({ navigation }) {
       >
         {/* Tarjetas de estadísticas */}
         <View style={styles.statsContainer}>
+
           <TouchableOpacity style={styles.statCard} onPress={viewInventoryValue}>
             <View style={[styles.iconCircle, { backgroundColor: '#e8f5e9' }]}>
               <Ionicons name="cube-outline" size={24} color="#28a745" />
@@ -386,8 +374,10 @@ export default function DashboardScreen({ navigation }) {
         </View>
         
         {/* Tarjetas de valor de inventario e ingresos totales */}
+      
+        {/* Tarjetas de valor de inventario e ingresos totales */}
         <View style={styles.valueContainer}>
-          <TouchableOpacity style={styles.valueCard} onPress={viewInventoryValue}>
+          <TouchableOpacity style={styles.valueCard} onPress={viewAllSales}>
             <View style={styles.valueTextContainer}>
               <Text style={styles.valueLabel}>Valor de Inventario</Text>
               <Text style={styles.valueNumber}>{formatPrice(stats.inventoryValue)}</Text>
@@ -474,24 +464,54 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.emptyText}>No hay ventas recientes</Text>
           )}
         </View>
+
+        {/* Sección de productos con stock bajo */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Productos con Stock Bajo</Text>
+            <TouchableOpacity onPress={viewLowStockProducts}>
+              <Text style={styles.viewAllText}>Ver todas</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {lowStockProducts.length > 0 ? (
+            lowStockProducts.map(product => (
+              <TouchableOpacity 
+                key={product.id} 
+                style={styles.lowStockItem}
+                onPress={() => navigation.navigate('EditProduct', { productId: product.id })}
+              >
+                <View style={styles.lowStockInfo}>
+                  <Text style={styles.lowStockName}>{product.name}</Text>
+                  <Text style={styles.lowStockStock}>Stock: {product.stock}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
+              </TouchableOpacity>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>No hay productos con stock bajo</Text>
+          )}
+        </View>
       </ScrollView>
       
-      {/* Botones flotantes */}
-      <TouchableOpacity 
-        style={[styles.floatingButton, styles.newSaleButton]}
-        onPress={goToNewSale}
-      >
-        <Ionicons name="cart-outline" size={24} color="white" />
-        <Text style={styles.floatingButtonText}>Nueva Venta</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
-        style={[styles.floatingButton, styles.scanStockButton]}
-        onPress={goToScanStock}
-      >
-        <Ionicons name="barcode-outline" size={24} color="white" />
-        <Text style={styles.floatingButtonText}>Escanear Stock</Text>
-      </TouchableOpacity>
+      <View style={styles.floatingButtonsContainer}>
+  <TouchableOpacity 
+    style={[styles.floatingButton, styles.newSaleButton]}
+    onPress={goToNewSale}
+  >
+    <Ionicons name="cart-outline" size={24} color="white" />
+    <Text style={styles.floatingButtonText}>Nueva Venta</Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity 
+    style={[styles.floatingButton, styles.scanStockButton]}
+    onPress={goToScanStock}
+  >
+    <Ionicons name="barcode-outline" size={24} color="white" />
+    <Text style={styles.floatingButtonText}>Escanear Stock</Text>
+  </TouchableOpacity>
+</View>
+
     </SafeAreaView>
   );
 }
@@ -517,7 +537,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 100, // Espacio para los botones flotantes
+    paddingBottom: 20, // Espacio para los botones flotantes
   },
   statsContainer: {
     flexDirection: 'row',
@@ -642,9 +662,9 @@ const styles = StyleSheet.create({
   categoryCard: {
     backgroundColor: 'white',
     borderRadius: 12,
-    padding: 15,
+    padding: 5,
     marginRight: 15,
-    width: 120,
+    width: 100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -653,8 +673,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   categoryIconContainer: {
-    width: 50,
-    height: 50,
+    width: 30,
+    height: 30,
     borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
@@ -715,6 +735,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
+  floatingButtonsContainer: {
+    position: 'absolute',
+    bottom: 10,
+    right: 20,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    zIndex: 10
+  },  
   newSaleButton: {
     bottom: 80,
     right: 20,
@@ -765,5 +793,25 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold'
-  }
+  },
+  lowStockItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    paddingVertical: 10,
+  },
+  lowStockInfo: {
+    flex: 1,
+  },
+  lowStockName: {
+    fontSize: 14,
+    color: colors.text.primary,
+    marginBottom: 5,
+  },
+  lowStockStock: {
+    fontSize: 12,
+    color: colors.text.secondary,
+  },
 });
