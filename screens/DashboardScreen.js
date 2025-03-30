@@ -178,7 +178,7 @@ export default function DashboardScreen({ navigation }) {
   const navigateToCategory = (categoryId) => {
     navigation.navigate('Products', {
       screen: 'ProductList',
-      params: { selectedCategory: categoryId }
+      params: { filter: 'category', category: categoryId }
     });
   };
   
@@ -192,6 +192,13 @@ export default function DashboardScreen({ navigation }) {
     navigation.navigate('Products', {
       screen: 'ProductList',
       params: { filter: 'lowStock' }
+    });
+  };
+  
+  const viewInventoryValue = () => {
+    navigation.navigate('Products', {
+      screen: 'ProductList',
+      params: { filter: 'inventoryValue' }
     });
   };
   
@@ -353,34 +360,34 @@ export default function DashboardScreen({ navigation }) {
       >
         {/* Tarjetas de estadísticas */}
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
+          <TouchableOpacity style={styles.statCard} onPress={viewInventoryValue}>
             <View style={[styles.iconCircle, { backgroundColor: '#e8f5e9' }]}>
               <Ionicons name="cube-outline" size={24} color="#28a745" />
             </View>
             <Text style={styles.statNumber}>{stats.totalProducts}</Text>
             <Text style={styles.statLabel}>Productos</Text>
-          </View>
+          </TouchableOpacity>
           
-          <View style={styles.statCard}>
+          <TouchableOpacity style={styles.statCard} onPress={viewLowStockProducts}>
             <View style={[styles.iconCircle, { backgroundColor: '#fff3e0' }]}>
               <Ionicons name="alert-outline" size={24} color="#ff9800" />
             </View>
             <Text style={styles.statNumber}>{stats.lowStockCount}</Text>
             <Text style={styles.statLabel}>Stock Bajo</Text>
-          </View>
+          </TouchableOpacity>
           
-          <View style={styles.statCard}>
+          <TouchableOpacity style={styles.statCard} onPress={viewAllSales}>
             <View style={[styles.iconCircle, { backgroundColor: '#e3f2fd' }]}>
               <Ionicons name="cart-outline" size={24} color="#2196f3" />
             </View>
             <Text style={styles.statNumber}>{stats.totalSales}</Text>
             <Text style={styles.statLabel}>Ventas</Text>
-          </View>
+          </TouchableOpacity>
         </View>
         
         {/* Tarjetas de valor de inventario e ingresos totales */}
         <View style={styles.valueContainer}>
-          <View style={styles.valueCard}>
+          <TouchableOpacity style={styles.valueCard} onPress={viewInventoryValue}>
             <View style={styles.valueTextContainer}>
               <Text style={styles.valueLabel}>Valor de Inventario</Text>
               <Text style={styles.valueNumber}>{formatPrice(stats.inventoryValue)}</Text>
@@ -388,9 +395,9 @@ export default function DashboardScreen({ navigation }) {
             <View style={[styles.valueIconContainer, { backgroundColor: '#e8f5e9' }]}>
               <Ionicons name="cash-outline" size={24} color="#28a745" />
             </View>
-          </View>
+          </TouchableOpacity>
           
-          <View style={styles.valueCard}>
+          <TouchableOpacity style={styles.valueCard} onPress={viewAllSales}>
             <View style={styles.valueTextContainer}>
               <Text style={styles.valueLabel}>Ingresos Totales</Text>
               <Text style={styles.valueNumber}>{formatPrice(stats.totalIncome)}</Text>
@@ -398,7 +405,7 @@ export default function DashboardScreen({ navigation }) {
             <View style={[styles.valueIconContainer, { backgroundColor: '#e3f2fd' }]}>
               <Ionicons name="trending-up-outline" size={24} color="#2196f3" />
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
         
         {/* Sección de categorías */}
@@ -419,10 +426,7 @@ export default function DashboardScreen({ navigation }) {
               <TouchableOpacity
                 key={category.id}
                 style={styles.categoryCard}
-                onPress={() => navigation.navigate('ProductList', {
-                  filter: 'category',
-                  category: category.id
-                })}
+                onPress={() => navigateToCategory(category.id)}
               >
                 <View style={styles.categoryIconContainer}>
                   <Ionicons 

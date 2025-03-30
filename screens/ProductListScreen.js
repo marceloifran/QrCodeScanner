@@ -72,6 +72,7 @@ export default function ProductListScreen({ navigation, route }) {
   const { products, loading, loadProducts } = useProducts();
   
   const isSelecting = route.params?.isSelecting || false;
+  const { filter, category } = route.params || {};
   
   // Definir la función loadCategories dentro del componente
   const loadCategories = async () => {

@@ -25,15 +25,22 @@ export const INDUSTRY_CATEGORIES = {
     { id: 'dermocosmetics', name: 'Dermocosmética' }
   ],
   grocery: [
-    { id: 'dairy', name: 'Lácteos' },
-    { id: 'meat', name: 'Carnes' },
-    { id: 'fruits', name: 'Frutas y Verduras' },
-    { id: 'bakery', name: 'Panadería' },
-    { id: 'beverages', name: 'Bebidas' },
-    { id: 'snacks', name: 'Snacks' },
-    { id: 'canned', name: 'Enlatados' },
-    { id: 'frozen', name: 'Congelados' },
-    { id: 'cleaning', name: 'Limpieza' }
+    { id: 'almacen', name: 'Almacén' },
+    { id: 'bazar', name: 'Bazar' },
+    { id: 'bebidas', name: 'Bebidas' },
+    { id: 'carnes', name: 'Carnes' },
+    { id: 'cigarrillos', name: 'Cigarrillos' },
+    { id: 'congelados', name: 'Congelados' },
+    { id: 'cuidado_personal', name: 'Cuidado Personal' },
+    { id: 'dulces', name: 'Dulces' },
+    { id: 'frutas', name: 'Frutas' },
+    { id: 'higiene', name: 'Higiene' },
+    { id: 'lacteos', name: 'Lácteos' },
+    { id: 'limpieza', name: 'Limpieza' },
+    { id: 'otros', name: 'Otros' },
+    { id: 'panaderia', name: 'Panadería' },
+    { id: 'salsas', name: 'Salsas' },
+    { id: 'snacks', name: 'snacks' }
   ],
   electronics: [
     { id: 'smartphones', name: 'Smartphones' },
@@ -111,13 +118,22 @@ export const getCategoriesForIndustry = (industry) => {
       { id: 'food', name: 'Alimentos', icon: 'restaurant-outline' },
     ],
     'grocery': [
-      { id: 'dairy', name: 'Lácteos', icon: 'nutrition-outline' },
-      { id: 'meat', name: 'Carnes', icon: 'restaurant-outline' },
+      { id: 'lacteos', name: 'Lácteos', icon: 'nutrition-outline' },
+      { id: 'carnes', name: 'Carnes', icon: 'restaurant-outline' },
       { id: 'fruits', name: 'Frutas y Verduras', icon: 'leaf-outline' },
-      { id: 'beverages', name: 'Bebidas', icon: 'wine-outline' },
-      { id: 'bakery', name: 'Panadería', icon: 'fast-food-outline' },
-      { id: 'cleaning', name: 'Limpieza', icon: 'sparkles-outline' },
-      { id: 'personal', name: 'Cuidado Personal', icon: 'body-outline' },
+      { id: 'bebidas', name: 'Bebidas', icon: 'wine-outline' },
+      { id: 'panaderia', name: 'Panadería', icon: 'fast-food-outline' },
+      { id: 'limpieza', name: 'Limpieza', icon: 'sparkles-outline' },
+      { id: 'cuidado_personal', name: 'Cuidado Personal', icon: 'body-outline' },
+      { id: 'higiene', name: 'Higiene', icon: 'water-outline' },
+      { id: 'almacen', name: 'Almacén', icon: 'cube-outline' },
+      { id: 'bazar', name: 'Bazar', icon: 'basket-outline' },
+      { id: 'dulces', name: 'Dulces', icon: 'ice-cream-outline' },
+      { id: 'snacks', name: 'Snacks', icon: 'pizza-outline' },
+      { id: 'cigarrillos', name: 'Cigarrillos', icon: 'flame-outline' },
+      { id: 'congelados', name: 'Congelados', icon: 'snow-outline' },
+      { id: 'salsas', name: 'Salsas', icon: 'nutrition-outline' },
+      { id: 'otros', name: 'Otros', icon: 'cube-outline' },
     ],
     'clothing': [
       { id: 'shirts', name: 'Camisas', icon: 'shirt-outline' },
@@ -494,4 +510,4 @@ export const getCustomFieldsForIndustry = (industryType) => {
         }
       };
   }
-}; 
+};

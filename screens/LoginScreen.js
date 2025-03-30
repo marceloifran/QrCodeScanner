@@ -19,8 +19,10 @@ import { colors } from '../theme/colors';
 // Comentar esta importación si sigue dando problemas
 // import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen() {
+  const navigation = useNavigation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -84,7 +86,7 @@ export default function LoginScreen({ navigation }) {
             <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Correo electrónico"
               placeholderTextColor="#999"
               value={email}
               onChangeText={setEmail}
@@ -129,7 +131,7 @@ export default function LoginScreen({ navigation }) {
           
           <TouchableOpacity 
             style={styles.forgotPassword}
-            onPress={() => navigation.navigate('SignUp')}
+            onPress={() => navigation.navigate('ForgotPassword')}
           >
             <Text style={styles.forgotPasswordText}>¿Olvidaste tu contraseña?</Text>
           </TouchableOpacity>
@@ -137,7 +139,7 @@ export default function LoginScreen({ navigation }) {
         
         <View style={styles.footer}>
           <Text style={styles.footerText}>¿No tienes una cuenta?</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+          <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
             <Text style={styles.signUpText}>Regístrate</Text>
           </TouchableOpacity>
         </View>
@@ -168,8 +170,9 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   logo: {
-    width: 120,
-    height: 120,
+    width: 100,
+    height: 100,
+    borderRadius: 20,
     marginBottom: 10,
   },
   appName: {
@@ -241,11 +244,14 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   footerText: {
-    color: colors.text.secondary,
+    color: 'white',
+    fontSize: 14,
     marginRight: 5,
   },
   signUpText: {
-    color: colors.primary,
+    color: 'white',
     fontWeight: 'bold',
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
 }); 
