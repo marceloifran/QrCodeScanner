@@ -182,12 +182,11 @@ export const getCategoriesForIndustry = (industryType) => {
       { id: 'nonfiction', name: 'No Ficción', icon: 'document-text-outline' },
       { id: 'children', name: 'Infantil', icon: 'happy-outline' },
       { id: 'academic', name: 'Académicos', icon: 'school-outline' },
-    ],
-    'other': commonCategories,
+    ]
   };
   
   // Devolver las categorías específicas de la industria o las comunes si no hay específicas
-  return industryCategories[industry] || commonCategories;
+  return industryCategories[industry] ;
   switch (industryType) {
     case 'general':
       return [
