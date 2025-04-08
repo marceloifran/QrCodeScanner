@@ -238,61 +238,6 @@ const goToNewSale = () => {
     }
   };
   
-  const getCategoryIcon = (categoryId) => {
-    // Iconos por defecto según el tipo de categoría
-    const defaultIcons = {
-      'general': 'cube-outline',
-      'offers': 'pricetag-outline',
-      'new': 'star-outline',
-      'popular': 'flame-outline',
-      'shirts': 'shirt-outline',
-      'pants': 'cut-outline',
-      'shoes': 'footsteps-outline',
-      'accessories': 'watch-outline',
-      'medications': 'medical-outline',
-      'vitamins': 'fitness-outline',
-      'dairy': 'nutrition-outline',
-      'meat': 'restaurant-outline',
-      'fruits': 'leaf-outline',
-      'beverages': 'wine-outline',
-      'smartphones': 'phone-portrait-outline',
-      'computers': 'laptop-outline',
-      'starters': 'restaurant-outline',
-      'desserts': 'ice-cream-outline',
-      'bread': 'fast-food-outline',
-      'tools': 'construct-outline',
-      'skincare': 'water-outline',
-      'makeup': 'color-palette-outline',
-      'fiction': 'book-outline',
-      'nonfiction': 'document-text-outline',
-      // Añadir más iconos según sea necesario
-    };
-    
-    return defaultIcons[categoryId] || 'cube-outline'; // Icono por defecto
-  };
-  
-  const getCategoryName = (categoryId, categoriesList) => {
-    const category = categoriesList.find(cat => cat.id === categoryId);
-    return category ? category.name : 'Sin categoría';
-  };
-  
-  const renderCategoryItem = ({ item }) => {
-    const count = categoryCounts[item.id] || 0;
-    
-    return (
-      <TouchableOpacity
-        style={styles.categoryCard}
-        onPress={() => navigateToCategory(item.id)}
-      >
-        <View style={[styles.categoryIconContainer, { backgroundColor: getCategoryColor(item.id) }]}>
-          <Ionicons name={getCategoryIcon(item.id)} size={24} color="white" />
-        </View>
-        <Text style={styles.categoryName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.categoryCount}>{count} productos</Text>
-      </TouchableOpacity>
-    );
-  };
-  
   const getCategoryColor = (categoryId) => {
     // Colores para diferentes categorías
     const colors = {
@@ -421,14 +366,8 @@ const goToNewSale = () => {
                 style={styles.categoryCard}
                 onPress={() => navigateToCategory(category.id)}
               >
-                <View style={styles.categoryIconContainer}>
-                  <Ionicons 
-                    name={getCategoryIcon(category.id)} 
-                    size={24} 
-                    color={colors.primary} 
-                  />
-                </View>
-                <Text style={styles.categoryName}>{getCategoryName(category.id, categories)}</Text>
+                <View style={[styles.categoryColorIndicator, { backgroundColor: getCategoryColor(category.id) }]} />
+                <Text style={styles.categoryName}>{category.name} ({categoryCounts[category.id] || 0})</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -664,31 +603,29 @@ const styles = StyleSheet.create({
   },
   categoryCard: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 5,
-    marginRight: 15,
-    width: 100,
+    borderRadius: 10,
+    padding: 12,
+    marginRight: 10,
+    minWidth: 100,
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 2,
     elevation: 2,
-    alignItems: 'center',
   },
-  categoryIconContainer: {
+  categoryColorIndicator: {
     width: 30,
-    height: 30,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
+    height: 5,
+    borderRadius: 3,
+    marginBottom: 8,
   },
   categoryName: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
     color: colors.text.primary,
     textAlign: 'center',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   categoryCount: {
     fontSize: 12,

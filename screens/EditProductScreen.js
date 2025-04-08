@@ -232,12 +232,6 @@ export default function EditProductScreen({ navigation, route }) {
         onPress={() => setShowCategoryModal(true)}
       >
         <View style={styles.categorySelectorContent}>
-          <Ionicons
-            name={getCategoryIcon(category)}
-            size={24}
-            color={colors.primary}
-            style={styles.categoryIcon}
-          />
           <Text style={styles.categoryText}>
             {getCategoryName(category, categories)}
           </Text>
@@ -284,19 +278,13 @@ export default function EditProductScreen({ navigation, route }) {
                   <View style={styles.categoryOptionContent}>
                     <View
                       style={[
-                        styles.categoryIconContainer,
+                        styles.categoryColorIndicator,
                         {
                           backgroundColor:
                             category === item.id ? colors.primary : "#f0f0f0",
                         },
                       ]}
-                    >
-                      <Ionicons
-                        name={getCategoryIcon(item.id)}
-                        size={20}
-                        color={category === item.id ? "white" : colors.primary}
-                      />
-                    </View>
+                    />
                     <Text
                       style={[
                         styles.categoryOptionText,
@@ -698,9 +686,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  categoryIcon: {
-    marginRight: 10,
-  },
   categoryText: {
     fontSize: 16,
     color: colors.text.primary,
@@ -778,7 +763,7 @@ const styles = StyleSheet.create({
   selectedCategoryOption: {
     backgroundColor: "rgba(76, 175, 80, 0.1)",
   },
-  categoryIconContainer: {
+  categoryColorIndicator: {
     width: 40,
     height: 40,
     borderRadius: 20,

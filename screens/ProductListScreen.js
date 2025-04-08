@@ -35,40 +35,6 @@ const getCategoryName = (categoryId, categories) => {
   return category ? category.name : "Sin categoría";
 };
 
-// Función para obtener un icono para la categoría
-const getCategoryIcon = (categoryId) => {
-  // Iconos por defecto según el tipo de categoría
-  const defaultIcons = {
-    general: "cube-outline",
-    offers: "pricetag-outline",
-    new: "star-outline",
-    popular: "flame-outline",
-    shirts: "shirt-outline",
-    pants: "cut-outline",
-    shoes: "footsteps-outline",
-    accessories: "watch-outline",
-    medications: "medical-outline",
-    vitamins: "fitness-outline",
-    dairy: "nutrition-outline",
-    meat: "restaurant-outline",
-    fruits: "leaf-outline",
-    beverages: "wine-outline",
-    smartphones: "phone-portrait-outline",
-    computers: "laptop-outline",
-    starters: "restaurant-outline",
-    desserts: "ice-cream-outline",
-    bread: "fast-food-outline",
-    tools: "construct-outline",
-    skincare: "water-outline",
-    makeup: "color-palette-outline",
-    fiction: "book-outline",
-    nonfiction: "document-text-outline",
-    // Añadir más iconos según sea necesario
-  };
-
-  return defaultIcons[categoryId] || "cube-outline"; // Icono por defecto
-};
-
 export default function ProductListScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -246,29 +212,14 @@ export default function ProductListScreen({ navigation, route }) {
 
   const categoryCounts = useMemo(() => {
     const counts = {};
-
-    // Inicializar todas las categorías con 0
-    categories.forEach((cat) => {
-      counts[cat.id] = 0;
-    });
-
-    // Contar productos por categoría
-    products.forEach((product) => {
-      if (product.category) {
-        // Verificar si la categoría existe en las categorías cargadas
-        const categoryExists = categories.some(
-          (cat) => cat.id === product.category
-        );
-
-        if (categoryExists) {
-          // Si existe, incrementar el contador
-          counts[product.category] = (counts[product.category] || 0) + 1;
-        }
-      }
-    });
-
+    if (products) {
+      products.forEach((product) => {
+        const category = product.category || "sin-categoria";
+        counts[category] = (counts[category] || 0) + 1;
+      });
+    }
     return counts;
-  }, [products, categories]);
+  }, [products]);
 
   const categoryValues = useMemo(() => {
     const values = {};
@@ -377,18 +328,6 @@ export default function ProductListScreen({ navigation, route }) {
             onPress={() => handleProductPress(item)}
           >
             <View style={styles.productHeader}>
-              <View
-                style={[
-                  styles.categoryIconContainer,
-                  { backgroundColor: `${colors.primary}20` },
-                ]}
-              >
-                <Ionicons
-                  name={getCategoryIcon(item.category)}
-                  size={24}
-                  color={colors.primary}
-                />
-              </View>
               <Text style={styles.productName} numberOfLines={1}>
                 {item.name}
               </Text>
@@ -396,24 +335,12 @@ export default function ProductListScreen({ navigation, route }) {
 
             <View style={styles.productDetails}>
               <View style={styles.priceContainer}>
-                <Ionicons
-                  name="pricetag-outline"
-                  size={18}
-                  color="#666"
-                  style={{ marginRight: 6 }}
-                />
                 <Text style={styles.productPrice}>
                   {formatPrice(item.price)}
                 </Text>
               </View>
 
               <View style={styles.stockContainer}>
-                <Ionicons
-                  name="cube-outline"
-                  size={18}
-                  color="#666"
-                  style={{ marginRight: 6 }}
-                />
                 <Text style={[styles.productStock, { color: stockColor }]}>
                   {item.stock} unid.
                 </Text>
@@ -426,7 +353,7 @@ export default function ProductListScreen({ navigation, route }) {
               style={styles.deleteButton}
               onPress={() => handleDeleteProduct(item.id, item.name)}
             >
-              <Ionicons name="trash-outline" size={22} color={colors.error} />
+              <Ionicons name="trash" size={24} color={colors.error} />
             </TouchableOpacity>
           )}
         </View>
@@ -453,11 +380,9 @@ export default function ProductListScreen({ navigation, route }) {
         >
           <Text style={styles.sortButtonText}>Nombre</Text>
           {sortBy === "name" && (
-            <Ionicons
-              name={sortOrder === "asc" ? "chevron-up" : "chevron-down"}
-              size={18}
-              color="#333"
-            />
+            <Text style={styles.sortButtonIcon}>
+              {sortOrder === "asc" ? "↑" : "↓"}
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -474,11 +399,9 @@ export default function ProductListScreen({ navigation, route }) {
         >
           <Text style={styles.sortButtonText}>Precio</Text>
           {sortBy === "price" && (
-            <Ionicons
-              name={sortOrder === "asc" ? "chevron-up" : "chevron-down"}
-              size={18}
-              color="#333"
-            />
+            <Text style={styles.sortButtonIcon}>
+              {sortOrder === "asc" ? "↑" : "↓"}
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -495,11 +418,9 @@ export default function ProductListScreen({ navigation, route }) {
         >
           <Text style={styles.sortButtonText}>Stock</Text>
           {sortBy === "stock" && (
-            <Ionicons
-              name={sortOrder === "asc" ? "chevron-up" : "chevron-down"}
-              size={18}
-              color="#333"
-            />
+            <Text style={styles.sortButtonIcon}>
+              {sortOrder === "asc" ? "↑" : "↓"}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -523,12 +444,6 @@ export default function ProductListScreen({ navigation, route }) {
             onPress={() => setSelectedCategory(null)}
           >
             <View style={styles.categoryChipContent}>
-              <Ionicons
-                name="apps-outline"
-                size={18}
-                color={!selectedCategory ? "white" : colors.primary}
-                style={styles.categoryIcon}
-              />
               <Text
                 style={[
                   styles.categoryText,
@@ -552,14 +467,6 @@ export default function ProductListScreen({ navigation, route }) {
               onPress={() => setSelectedCategory(category.id)}
             >
               <View style={styles.categoryChipContent}>
-                <Ionicons
-                  name={getCategoryIcon(category.id)}
-                  size={18}
-                  color={
-                    selectedCategory === category.id ? "white" : colors.primary
-                  }
-                  style={styles.categoryIcon}
-                />
                 <Text
                   style={[
                     styles.categoryText,
@@ -568,7 +475,7 @@ export default function ProductListScreen({ navigation, route }) {
                       : null,
                   ]}
                 >
-                  {category.name}
+                  {category.name} ({categoryCounts[category.id]})
                 </Text>
               </View>
             </TouchableOpacity>
@@ -587,7 +494,7 @@ export default function ProductListScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#aaa" />
+        <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           style={styles.searchInput}
           placeholder="Buscar productos..."
@@ -596,7 +503,7 @@ export default function ProductListScreen({ navigation, route }) {
         />
         {searchQuery ? (
           <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Ionicons name="close-circle" size={24} color="#aaa" />
+            <Text style={styles.searchClearIcon}>×</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -635,7 +542,7 @@ export default function ProductListScreen({ navigation, route }) {
         style={styles.addButton}
         onPress={() => navigation.navigate("AddProduct")}
       >
-        <Ionicons name="add" size={30} color="#fff" />
+        <Text style={styles.addButtonText}>+</Text>
       </TouchableOpacity>
     </View>
   );
@@ -661,11 +568,21 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  searchIcon: {
+    fontSize: 20,
+    color: "#aaa",
+    marginRight: 10,
+  },
   searchInput: {
     flex: 1,
     marginLeft: 10,
     fontSize: 16,
     color: "#333",
+  },
+  searchClearIcon: {
+    fontSize: 24,
+    color: "#aaa",
+    marginLeft: 10,
   },
   filtersWrapper: {
     backgroundColor: "white",
@@ -755,6 +672,10 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#333",
   },
+  sortButtonIcon: {
+    fontSize: 18,
+    color: "#333",
+  },
   loader: {
     flex: 1,
     justifyContent: "center",
@@ -780,15 +701,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 16,
-  },
-  categoryIconContainer: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: "#e8f5e9",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
   },
   productName: {
     flex: 1,
@@ -842,6 +754,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     elevation: 4,
   },
+  addButtonText: {
+    fontSize: 30,
+    color: "#fff",
+  },
   deleteButton: {
     justifyContent: "center",
     alignItems: "center",
@@ -886,9 +802,6 @@ const styles = StyleSheet.create({
   selectedCategoryChip: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
-  },
-  categoryIcon: {
-    marginRight: 8,
   },
   categoryText: {
     color: "#555",
