@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
-import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
 export default function BusinessInfoScreen({ navigation }) {

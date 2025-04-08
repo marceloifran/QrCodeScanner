@@ -13,7 +13,6 @@ import {
   Modal,
   FlatList,
   Switch,
-  Picker,
 } from "react-native";
 import {
   doc,
@@ -25,16 +24,12 @@ import {
   where,
   getDocs,
   serverTimestamp,
-  setDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebase/config";
 import { colors } from "../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Camera, CameraView } from "expo-camera"; // Import Camera components
-import {
-  getCategoriesForIndustry,
-  getCustomFieldsForIndustry,
-} from "../utils/categoryUtils";
+import { getCategoriesForIndustry } from "../utils/categoryUtils";
 
 export default function EditProductScreen({ navigation, route }) {
   const { productId } = route.params;
@@ -59,15 +54,7 @@ export default function EditProductScreen({ navigation, route }) {
   const [hasPermission, setHasPermission] = useState(null);
 
   const commonPercentages = ["10", "15", "20", "25", "30", "35", "40", "50"];
-
-  const [industryConfig, setIndustryConfig] = useState(null);
-  const [customFields, setCustomFields] = useState({});
-
   const [categories, setCategories] = useState([]);
-
-  const [showSelectModal, setShowSelectModal] = useState(false);
-  const [currentSelectField, setCurrentSelectField] = useState(null);
-  const [currentDateField, setCurrentDateField] = useState(null);
 
   useEffect(() => {
     loadProduct();
@@ -77,7 +64,7 @@ export default function EditProductScreen({ navigation, route }) {
       setHasPermission(status === "granted");
     })();
 
-    const loadCategoriesAndConfig = async () => {
+    const loadCategories = async () => {
       try {
         // Cargar la industria del usuario
         const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
@@ -96,64 +83,15 @@ export default function EditProductScreen({ navigation, route }) {
         // Obtener categorías directamente de categoryUtils
         const industryCategories = getCategoriesForIndustry(userIndustry);
         setCategories(industryCategories);
-
-        // Cargar configuración de campos personalizados
-        const configDoc = await getDoc(
-          doc(db, "industryConfig", auth.currentUser.uid)
-        );
-        if (configDoc.exists()) {
-          const config = configDoc.data();
-
-          // Verificar que la industria en la configuración coincida con la industria actual
-          if (config.industry !== userIndustry) {
-            console.log(
-              "La industria en la configuración no coincide con la industria actual, actualizando..."
-            );
-            // Actualizar la configuración con los campos correctos para la industria actual
-            const updatedConfig = {
-              ...config,
-              industry: userIndustry,
-              customFields: getCustomFieldsForIndustry(userIndustry),
-              updatedAt: new Date(),
-            };
-
-            // Guardar la configuración actualizada
-            await setDoc(
-              doc(db, "industryConfig", auth.currentUser.uid),
-              updatedConfig,
-              { merge: true }
-            );
-
-            setIndustryConfig(updatedConfig);
-          } else {
-            // La industria coincide, usar la configuración existente
-            setIndustryConfig(config);
-          }
-        } else {
-          // Si no existe configuración, crear una basada en la industria
-          const defaultConfig = {
-            industry: userIndustry,
-            customFields: getCustomFieldsForIndustry(userIndustry),
-            createdAt: new Date(),
-          };
-
-          // Guardar la configuración por defecto
-          await setDoc(
-            doc(db, "industryConfig", auth.currentUser.uid),
-            defaultConfig
-          );
-
-          setIndustryConfig(defaultConfig);
-        }
       } catch (error) {
-        console.error("Error al cargar categorías y configuración:", error);
+        console.error("Error al cargar categorías:", error);
         // En caso de error, usar categorías generales
         const defaultCategories = getCategoriesForIndustry("general");
         setCategories(defaultCategories);
       }
     };
 
-    loadCategoriesAndConfig();
+    loadCategories();
   }, []);
 
   const loadProduct = async () => {
@@ -190,17 +128,6 @@ export default function EditProductScreen({ navigation, route }) {
           : null
       );
       setNotifyExpiry(productData.notifyExpiry || false);
-
-      if (productData.customFields) {
-        setCustomFields(productData.customFields);
-      }
-
-      const configDoc = await getDoc(
-        doc(db, "industryConfig", auth.currentUser.uid)
-      );
-      if (configDoc.exists()) {
-        setIndustryConfig(configDoc.data());
-      }
     } catch (error) {
       Alert.alert("Error", "No se pudo cargar el producto");
       navigation.goBack();
@@ -278,7 +205,6 @@ export default function EditProductScreen({ navigation, route }) {
         updatedAt: serverTimestamp(),
         expiryDate: expiryDate || null,
         notifyExpiry: notifyExpiry,
-        customFields: customFields,
       });
 
       Alert.alert(
@@ -473,14 +399,7 @@ export default function EditProductScreen({ navigation, route }) {
     setShowDatePicker(Platform.OS === "ios");
 
     if (selectedDate) {
-      if (currentDateField === "expiryDate") {
-        setExpiryDate(selectedDate);
-      } else if (currentDateField) {
-        setCustomFields({
-          ...customFields,
-          [currentDateField]: selectedDate,
-        });
-      }
+      setExpiryDate(selectedDate);
     }
   };
 
@@ -564,113 +483,6 @@ export default function EditProductScreen({ navigation, route }) {
             {expiryDate ? expiryDate.toLocaleDateString() : "Seleccionar fecha"}
           </Text>
         </TouchableOpacity>
-      </View>
-    );
-  };
-
-  const renderCustomFields = () => {
-    if (!industryConfig || !industryConfig.customFields) {
-      console.log("No hay configuración de industria o campos personalizados");
-      return null;
-    }
-
-    return (
-      <View style={styles.section}>
-        {Object.entries(industryConfig.customFields).map(
-          ([fieldKey, field]) => {
-            // Si el campo no tiene nombre, usar el ID como nombre
-            const fieldName = field.name || fieldKey;
-
-            return (
-              <View key={fieldKey} style={styles.formGroup}>
-                <Text style={styles.label}>
-                  {fieldName}
-                  {field.required && (
-                    <Text style={styles.requiredStar}> *</Text>
-                  )}
-                </Text>
-
-                {/* Campo de texto simple */}
-                {field.type === "text" && (
-                  <TextInput
-                    style={styles.input}
-                    value={customFields[fieldKey] || ""}
-                    onChangeText={(text) => {
-                      setCustomFields({ ...customFields, [fieldKey]: text });
-                    }}
-                    placeholder={`Ingrese ${fieldName.toLowerCase()}`}
-                  />
-                )}
-
-                {/* Campo de texto multilínea */}
-                {field.type === "textarea" && (
-                  <TextInput
-                    style={[
-                      styles.input,
-                      { height: 100, textAlignVertical: "top" },
-                    ]}
-                    value={customFields[fieldKey] || ""}
-                    onChangeText={(text) => {
-                      setCustomFields({ ...customFields, [fieldKey]: text });
-                    }}
-                    placeholder={`Ingrese ${fieldName.toLowerCase()}`}
-                    multiline={true}
-                    numberOfLines={4}
-                  />
-                )}
-
-                {/* Campo numérico */}
-                {field.type === "number" && (
-                  <TextInput
-                    style={styles.input}
-                    value={customFields[fieldKey] || ""}
-                    onChangeText={(text) => {
-                      const numericValue = text.replace(/[^0-9]/g, "");
-                      setCustomFields({
-                        ...customFields,
-                        [fieldKey]: numericValue,
-                      });
-                    }}
-                    placeholder={`Ingrese ${fieldName.toLowerCase()}`}
-                    keyboardType="numeric"
-                  />
-                )}
-
-                {/* Selector de opciones */}
-                {field.type === "select" && field.options && (
-                  <View style={styles.selectContainer}>
-                    {field.options.map((option, index) => (
-                      <TouchableOpacity
-                        key={index}
-                        style={[
-                          styles.selectOption,
-                          customFields[fieldKey] === option &&
-                            styles.selectedSelectOption,
-                        ]}
-                        onPress={() => {
-                          setCustomFields({
-                            ...customFields,
-                            [fieldKey]: option,
-                          });
-                        }}
-                      >
-                        <Text
-                          style={[
-                            styles.selectOptionText,
-                            customFields[fieldKey] === option &&
-                              styles.selectedSelectOptionText,
-                          ]}
-                        >
-                          {option}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-              </View>
-            );
-          }
-        )}
       </View>
     );
   };
@@ -832,8 +644,6 @@ export default function EditProductScreen({ navigation, route }) {
               )}
             </TouchableOpacity>
           </View>
-
-          {renderCustomFields()}
         </View>
       </View>
       {renderCategoryModal()}
@@ -1046,19 +856,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginBottom: 15,
   },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: colors.text.primary,
-    marginBottom: 10,
-  },
-  requiredStar: {
-    color: "red",
-    fontWeight: "bold",
-  },
   barcodeContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1198,137 +995,6 @@ const styles = StyleSheet.create({
   },
   formGroup: {
     marginBottom: 20,
-  },
-  switchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 10,
-  },
-  pickerContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 10,
-  },
-  picker: {
-    flex: 1,
-  },
-  selectButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    padding: 15,
-    height: 50,
-  },
-  selectButtonText: {
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 20,
-    width: "80%",
-    maxHeight: "80%",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-    color: colors.text.primary,
-  },
-  optionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  selectedOptionItem: {
-    backgroundColor: "rgba(0, 128, 0, 0.05)",
-  },
-  optionText: {
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  selectedOptionText: {
-    color: colors.primary,
-    fontWeight: "bold",
-  },
-  cancelButton: {
-    marginTop: 15,
-    padding: 15,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 5,
-    alignItems: "center",
-  },
-  cancelButtonText: {
-    color: colors.text.primary,
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  booleanOption: {
-    flex: 1,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    marginRight: 5,
-    alignItems: "center",
-  },
-  selectedBooleanOption: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  booleanOptionText: {
-    color: colors.text.primary,
-  },
-  selectedBooleanOptionText: {
-    color: "white",
-    fontWeight: "bold",
-  },
-  selectContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 5,
-    gap: 8,
-  },
-  selectOption: {
-    backgroundColor: "#f0f0f0",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    minWidth: 60,
-    alignItems: "center",
-  },
-  selectedSelectOption: {
-    backgroundColor: colors.primary,
-  },
-  selectOptionText: {
-    fontSize: 14,
-    color: "#333",
-  },
-  selectedSelectOptionText: {
-    color: "white",
-    fontWeight: "bold",
   },
 });
 

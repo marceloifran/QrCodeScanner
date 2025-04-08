@@ -13,8 +13,8 @@ import {
   Modal,
   FlatList,
   Switch,
-  Picker,
 } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import {
   collection,
   addDoc,
@@ -359,13 +359,8 @@ export default function AddProductScreen({ navigation }) {
         updatedAt: serverTimestamp(),
         expiryDate: expiryDate || null,
         notifyExpiry: notifyExpiry,
+        industryType: industryType
       };
-
-      // Añadir campos personalizados según la industria
-      if (industryConfig) {
-        productData.industryType = industryType;
-        productData.customFields = customFields;
-      }
 
       await addDoc(collection(db, "products"), productData);
 
@@ -421,7 +416,7 @@ export default function AddProductScreen({ navigation }) {
   const renderCategoryModal = () => (
     <Modal
       animationType="slide"
-      transparent={true}
+      transparent={false}
       visible={showCategoryModal}
       onRequestClose={() => setShowCategoryModal(false)}
     >
@@ -441,7 +436,11 @@ export default function AddProductScreen({ navigation }) {
                   setShowCategoryModal(false);
                 }}
               >
-                <Ionicons name={item.icon} size={24} color={colors.primary} />
+                <Ionicons 
+                  name={item.icon || "pricetag-outline"} 
+                  size={24} 
+                  color={category === item.id ? colors.primary : colors.text.primary} 
+                />
                 <Text
                   style={[
                     styles.categoryItemText,
@@ -476,18 +475,14 @@ export default function AddProductScreen({ navigation }) {
       return null;
     }
 
+    console.log("Renderizando campos personalizados para industria:", industryType);
+
     return (
       <View style={styles.section}>
         {Object.entries(industryConfig.customFields).map(
           ([fieldKey, field]) => {
             // Si el campo no tiene nombre, usar el ID como nombre
             const fieldName = field.name || fieldKey;
-
-            // Si estamos en la industria de ropa (clothing) y el campo es uno de los repetidos, no mostrarlo
-            if (industryType === "clothing" && 
-                (fieldKey === "price" || fieldKey === "stock" || fieldKey === "barcode")) {
-              return null;
-            }
 
             return (
               <View key={fieldKey} style={styles.formGroup}>
@@ -546,56 +541,22 @@ export default function AddProductScreen({ navigation }) {
 
                 {/* Selector de opciones */}
                 {field.type === "select" && field.options && (
-                  <View>
-                    {/* Reemplazar el sistema de botones por un Picker para el campo talle */}
-                    {fieldKey === "size" ? (
-                      <View style={styles.pickerContainer}>
-                        <Picker
-                          selectedValue={customFields[fieldKey] || ""}
-                          style={styles.picker}
-                          onValueChange={(itemValue) => {
-                            setCustomFields({
-                              ...customFields,
-                              [fieldKey]: itemValue,
-                            });
-                          }}
-                        >
-                          <Picker.Item label="Seleccionar talle" value="" />
-                          {field.options.map((option, index) => (
-                            <Picker.Item key={index} label={option} value={option} />
-                          ))}
-                        </Picker>
-                      </View>
-                    ) : (
-                      <View style={styles.selectContainer}>
-                        {field.options.map((option, index) => (
-                          <TouchableOpacity
-                            key={index}
-                            style={[
-                              styles.selectOption,
-                              customFields[fieldKey] === option &&
-                                styles.selectedSelectOption,
-                            ]}
-                            onPress={() => {
-                              setCustomFields({
-                                ...customFields,
-                                [fieldKey]: option,
-                              });
-                            }}
-                          >
-                            <Text
-                              style={[
-                                styles.selectOptionText,
-                                customFields[fieldKey] === option &&
-                                  styles.selectedSelectOptionText,
-                              ]}
-                            >
-                              {option}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={customFields[fieldKey] || ""}
+                      style={styles.picker}
+                      onValueChange={(itemValue) => {
+                        setCustomFields({
+                          ...customFields,
+                          [fieldKey]: itemValue,
+                        });
+                      }}
+                    >
+                      <Picker.Item label={`Seleccionar ${fieldName.toLowerCase()}`} value="" />
+                      {field.options.map((option, index) => (
+                        <Picker.Item key={index} label={option} value={option} />
+                      ))}
+                    </Picker>
                   </View>
                 )}
               </View>
@@ -735,21 +696,21 @@ export default function AddProductScreen({ navigation }) {
         <View style={styles.formGroup}>
           <Text style={styles.label}>Categoría</Text>
           <TouchableOpacity
-            style={styles.inputContainer}
+            style={styles.categorySelector}
             onPress={() => setShowCategoryModal(true)}
           >
             <Ionicons
               name="pricetag-outline"
               size={20}
-              color="#666"
+              color={colors.text.primary}
               style={styles.inputIcon}
             />
-            <Text style={[styles.input, !category && styles.placeholderText]}>
+            <Text style={styles.categoryText}>
               {category
                 ? getCategoryName(category, categories)
                 : "Seleccionar categoría"}
             </Text>
-            <Ionicons name="chevron-down" size={20} color="#666" />
+            <Ionicons name="chevron-down" size={20} color={colors.text.primary} />
           </TouchableOpacity>
         </View>
 
@@ -793,8 +754,6 @@ export default function AddProductScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </View>
-
-        {renderCustomFields()}
 
         <TouchableOpacity
           style={[styles.addButton, loading && { opacity: 0.7 }]}
@@ -861,39 +820,40 @@ export default function AddProductScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors.background.primary,
   },
   scrollContent: {
     padding: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: colors.text.primary,
+  section: {
     marginBottom: 20,
-    textAlign: "center",
   },
   formGroup: {
     marginBottom: 15,
   },
   label: {
     fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 8,
     color: colors.text.primary,
-    marginBottom: 5,
   },
   sublabel: {
     fontSize: 14,
+    fontWeight: "500",
     color: colors.text.secondary,
-    marginTop: 10,
     marginBottom: 5,
   },
+  requiredStar: {
+    color: "red",
+  },
   input: {
-    backgroundColor: "white",
+    backgroundColor: colors.background.secondary,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text.primary,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 5,
-    padding: 10,
-    fontSize: 16,
   },
   barcodeContainer: {
     flexDirection: "row",
@@ -901,119 +861,51 @@ const styles = StyleSheet.create({
   },
   barcodeInput: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: colors.background.secondary,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text.primary,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 5,
-    padding: 10,
-    fontSize: 16,
   },
   scanButton: {
     backgroundColor: colors.primary,
-    padding: 10,
-    borderRadius: 5,
+    borderRadius: 8,
+    padding: 12,
     marginLeft: 10,
-  },
-  percentageHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 10,
-  },
-  resetButton: {
-    backgroundColor: "#f0f0f0",
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 15,
-  },
-  resetButtonText: {
-    fontSize: 12,
-    color: "#666",
-  },
-  percentageButtonsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 5,
-  },
-  percentageButton: {
-    backgroundColor: "#f0f0f0",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  selectedPercentageButton: {
-    backgroundColor: colors.primary,
-  },
-  percentageButtonText: {
-    fontSize: 14,
-    color: "#333",
-  },
-  selectedPercentageButtonText: {
-    color: "white",
-    fontWeight: "bold",
-  },
-  inputContainer: {
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    padding: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  placeholderText: {
-    color: colors.text.secondary,
-  },
-  dateSelector: {
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    padding: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  dateText: {
-    fontSize: 16,
-    color: colors.text.primary,
   },
   addButton: {
     backgroundColor: colors.primary,
+    borderRadius: 8,
     padding: 15,
-    borderRadius: 5,
     alignItems: "center",
     marginTop: 20,
   },
   addButtonText: {
     color: "white",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
   },
   modalContainer: {
     flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: colors.background.primary,
   },
   modalContent: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: colors.background.primary,
+    borderRadius: 12,
     padding: 20,
+    width: "90%",
     maxHeight: "80%",
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
-    color: colors.text.primary,
-    marginBottom: 20,
+    marginBottom: 15,
     textAlign: "center",
+    color: colors.text.primary,
   },
   categoryItem: {
     flexDirection: "row",
@@ -1022,49 +914,184 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  categoryItemSelected: {
+    backgroundColor: colors.background.highlight,
+  },
   categoryItemText: {
     fontSize: 16,
+    marginLeft: 10,
     color: colors.text.primary,
-    marginLeft: 15,
-  },
-  categoryItemSelected: {
-    backgroundColor: "#e8f5e9",
   },
   categoryItemTextSelected: {
+    fontWeight: "600",
     color: colors.primary,
-    fontWeight: "bold",
   },
   modalCloseButton: {
-    marginTop: 20,
-    padding: 15,
     backgroundColor: colors.primary,
-    borderRadius: 10,
+    borderRadius: 8,
+    padding: 12,
     alignItems: "center",
+    marginTop: 15,
   },
   modalCloseButtonText: {
-    color: colors.background,
+    color: "white",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "500",
+  },
+  cameraPermissionContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
   },
   scannerOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   scannerTarget: {
-    width: 300,
-    height: 100,
+    width: 250,
+    height: 250,
     borderWidth: 2,
     borderColor: "white",
-    backgroundColor: "transparent",
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
   scanLine: {
     height: 2,
-    width: "90%",
-    backgroundColor: "red",
+    width: "80%",
+    backgroundColor: colors.primary,
+  },
+  scannerCloseButton: {
+    position: "absolute",
+    top: 40,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 20,
+    padding: 10,
+  },
+  percentageButtonsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 5,
+  },
+  percentageButton: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 5,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    margin: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  selectedPercentageButton: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  percentageButtonText: {
+    color: colors.text.primary,
+    fontWeight: "500",
+  },
+  selectedPercentageButtonText: {
+    color: "white",
+  },
+  percentageHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  resetButton: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 5,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  resetButtonText: {
+    color: colors.text.secondary,
+    fontSize: 12,
+  },
+  categorySelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.background.secondary,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  categoryText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  inputIcon: {
+    marginRight: 10,
+    color: colors.text.primary,
+  },
+  dateSelector: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: colors.background.secondary,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateText: {
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  notificationOption: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+  },
+  notificationText: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    flex: 1,
+    marginRight: 10,
+  },
+  toggleButton: {
+    width: 50,
+    height: 26,
+    borderRadius: 13,
+    padding: 3,
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleButtonInactive: {
+    backgroundColor: "#ccc",
+  },
+  toggleIndicator: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "white",
+  },
+  toggleIndicatorActive: {
+    alignSelf: "flex-end",
+  },
+  toggleIndicatorInactive: {
+    alignSelf: "flex-start",
+  },
+  pickerContainer: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 5,
+    overflow: 'hidden',
+  },
+  picker: {
+    width: '100%',
+    height: 50,
+    color: colors.text.primary,
   },
   scannerText: {
     color: "white",
@@ -1081,197 +1108,6 @@ const styles = StyleSheet.create({
   cancelScanButtonText: {
     color: "white",
     fontSize: 16,
-    fontWeight: "bold",
-  },
-  notificationOption: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 10,
-    paddingVertical: 5,
-  },
-  notificationText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    flex: 1,
-  },
-  toggleButton: {
-    width: 50,
-    height: 26,
-    borderRadius: 13,
-    padding: 3,
-  },
-  toggleButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  toggleButtonInactive: {
-    backgroundColor: "#e0e0e0",
-  },
-  toggleIndicator: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "white",
-  },
-  toggleIndicatorActive: {
-    marginLeft: "auto",
-  },
-  toggleIndicatorInactive: {
-    marginLeft: 0,
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.text.primary,
-    marginBottom: 10,
-  },
-  requiredStar: {
-    color: "red",
-  },
-  datePickerButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    padding: 10,
-  },
-  datePickerButtonText: {
-    fontSize: 16,
-    color: colors.text.primary,
-    marginRight: 10,
-  },
-  switchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    padding: 10,
-  },
-  selectButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    padding: 15,
-    height: 50,
-  },
-  selectButtonText: {
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 20,
-    width: "80%",
-    maxHeight: "80%",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-    color: colors.text.primary,
-  },
-  optionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  selectedOptionItem: {
-    backgroundColor: "rgba(0, 128, 0, 0.05)",
-  },
-  optionText: {
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  selectedOptionText: {
-    color: colors.primary,
-    fontWeight: "bold",
-  },
-  cancelButton: {
-    marginTop: 15,
-    padding: 15,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 5,
-    alignItems: "center",
-  },
-  cancelButtonText: {
-    color: colors.text.primary,
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  pickerContainer: {
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    marginBottom: 10,
-  },
-  picker: {
-    height: 50,
-  },
-  booleanOption: {
-    flex: 1,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    marginRight: 5,
-    alignItems: "center",
-  },
-  selectedBooleanOption: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  booleanOptionText: {
-    color: colors.text.primary,
-  },
-  selectedBooleanOptionText: {
-    color: "white",
-    fontWeight: "bold",
-  },
-  selectContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 5,
-    gap: 8,
-  },
-  selectOption: {
-    backgroundColor: "#f0f0f0",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    minWidth: 60,
-    alignItems: "center",
-  },
-  selectedSelectOption: {
-    backgroundColor: colors.primary,
-  },
-  selectOptionText: {
-    fontSize: 14,
-    color: "#333",
-  },
-  selectedSelectOptionText: {
-    color: "white",
     fontWeight: "bold",
   },
 });

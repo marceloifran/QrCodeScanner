@@ -15,14 +15,6 @@ export const INDUSTRY_CATEGORIES = {
     { id: "sportswear", name: "Ropa Deportiva" },
     { id: "outerwear", name: "Abrigos" },
   ],
-  pharmacy: [
-    { id: "medications", name: "Medicamentos" },
-    { id: "vitamins", name: "Vitaminas y Suplementos" },
-    { id: "personal_care", name: "Cuidado Personal" },
-    { id: "first_aid", name: "Primeros Auxilios" },
-    { id: "baby_care", name: "Cuidado del Bebé" },
-    { id: "dermocosmetics", name: "Dermocosmética" },
-  ],
   grocery: [
     { id: "almacen", name: "Almacén" },
     { id: "bazar", name: "Bazar" },
@@ -119,56 +111,6 @@ export const getCategoryIcon = (categoryId) => {
 };
 
 export const getCustomFieldsForIndustry = (industryType) => {
-  const baseFields = [];
-
-  switch (industryType) {
-    case "grocery":
-      return [...baseFields];
-    case "clothing":
-      return [
-        ...baseFields,
-        {
-          id: "size",
-          name: "Talle",
-          type: "select",
-          options: [
-            "XS",
-            "S",
-            "M",
-            "L",
-            "XL",
-            "XXL",
-            "36",
-            "38",
-            "40",
-            "42",
-            "44",
-            "46",
-            "Único",
-          ],
-          required: false,
-          showInList: true,
-          order: 5,
-          renderAs: "selector",
-        },
-        {
-          id: "color",
-          name: "Color",
-          type: "text",
-          required: false,
-          showInList: true,
-          order: 6,
-        },
-        {
-          id: "material",
-          name: "Material",
-          type: "text",
-          required: false,
-          showInList: false,
-          order: 7,
-        },
-      ];
-    default:
-      return baseFields;
-  }
+  // Devolver un array vacío para no añadir campos personalizados
+  return [];
 };

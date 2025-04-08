@@ -173,10 +173,7 @@ const goToNewSale = () => {
   };
   
   const navigateToCategory = (categoryId) => {
-    navigation.navigate('Products', {
-      screen: 'ProductList',
-      params: { filter: 'category', category: categoryId }
-    });
+    navigation.navigate('ProductList', { filter: 'category', categoryId: categoryId });
   };
   
   const viewAllSales = () => {
