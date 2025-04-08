@@ -40,7 +40,12 @@
       },
       "package": "com.marceloifran.kioskoapp",
       "googleServicesFile": "./google-services.json",
-      "permissions": ["CAMERA", "RECEIVE_BOOT_COMPLETED"]
+      "permissions": [
+        "CAMERA",
+        "RECEIVE_BOOT_COMPLETED",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -51,6 +56,7 @@
       "eas": {
         "projectId": "c418f4af-b5b3-476e-97b8-3d17c2637b79"
       }
-    }
+    },
+    "owner": "marceloifran"
   }
 }

@@ -219,7 +219,13 @@ const goToNewSale = () => {
       
       let userIndustry = 'general';
       if (businessInfoDoc.exists()) {
-        userIndustry = businessInfoDoc.data().industry || 'general';
+        const data = businessInfoDoc.data();
+        // Verificar más explícitamente si la propiedad industry existe
+        if (data && 'industry' in data && data.industry) {
+          userIndustry = data.industry;
+        } else {
+          console.log('La propiedad industry no existe en los datos del negocio, usando valor por defecto');
+        }
       }
       
       // Obtener categorías directamente de categoryUtils

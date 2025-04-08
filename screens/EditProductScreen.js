@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { 
-  StyleSheet, 
-  Text, 
-  View, 
-  TextInput, 
-  TouchableOpacity, 
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -31,7 +31,10 @@ import { db, auth } from "../firebase/config";
 import { colors } from "../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Camera, CameraView } from "expo-camera"; // Import Camera components
-import { getCategoriesForIndustry, getCustomFieldsForIndustry } from '../utils/categoryUtils';
+import {
+  getCategoriesForIndustry,
+  getCustomFieldsForIndustry,
+} from "../utils/categoryUtils";
 
 export default function EditProductScreen({ navigation, route }) {
   const { productId } = route.params;
@@ -77,39 +80,50 @@ export default function EditProductScreen({ navigation, route }) {
     const loadCategoriesAndConfig = async () => {
       try {
         // Cargar la industria del usuario
-        const businessInfoRef = doc(db, 'businessInfo', auth.currentUser.uid);
+        const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
         const businessInfoDoc = await getDoc(businessInfoRef);
-        
-        let userIndustry = 'general';
+
+        let userIndustry = "general";
         if (businessInfoDoc.exists()) {
-          userIndustry = businessInfoDoc.data().industry || 'general';
+          userIndustry = businessInfoDoc.data().industry || "general";
         }
-        
-        console.log('EditProduct - Cargando datos para industria:', userIndustry);
-        
+
+        console.log(
+          "EditProduct - Cargando datos para industria:",
+          userIndustry
+        );
+
         // Obtener categorías directamente de categoryUtils
         const industryCategories = getCategoriesForIndustry(userIndustry);
         setCategories(industryCategories);
-        
+
         // Cargar configuración de campos personalizados
-        const configDoc = await getDoc(doc(db, 'industryConfig', auth.currentUser.uid));
+        const configDoc = await getDoc(
+          doc(db, "industryConfig", auth.currentUser.uid)
+        );
         if (configDoc.exists()) {
           const config = configDoc.data();
-          
+
           // Verificar que la industria en la configuración coincida con la industria actual
           if (config.industry !== userIndustry) {
-            console.log('La industria en la configuración no coincide con la industria actual, actualizando...');
+            console.log(
+              "La industria en la configuración no coincide con la industria actual, actualizando..."
+            );
             // Actualizar la configuración con los campos correctos para la industria actual
             const updatedConfig = {
               ...config,
               industry: userIndustry,
               customFields: getCustomFieldsForIndustry(userIndustry),
-              updatedAt: new Date()
+              updatedAt: new Date(),
             };
-            
+
             // Guardar la configuración actualizada
-            await setDoc(doc(db, 'industryConfig', auth.currentUser.uid), updatedConfig, { merge: true });
-            
+            await setDoc(
+              doc(db, "industryConfig", auth.currentUser.uid),
+              updatedConfig,
+              { merge: true }
+            );
+
             setIndustryConfig(updatedConfig);
           } else {
             // La industria coincide, usar la configuración existente
@@ -120,22 +134,25 @@ export default function EditProductScreen({ navigation, route }) {
           const defaultConfig = {
             industry: userIndustry,
             customFields: getCustomFieldsForIndustry(userIndustry),
-            createdAt: new Date()
+            createdAt: new Date(),
           };
-          
+
           // Guardar la configuración por defecto
-          await setDoc(doc(db, 'industryConfig', auth.currentUser.uid), defaultConfig);
-          
+          await setDoc(
+            doc(db, "industryConfig", auth.currentUser.uid),
+            defaultConfig
+          );
+
           setIndustryConfig(defaultConfig);
         }
       } catch (error) {
-        console.error('Error al cargar categorías y configuración:', error);
+        console.error("Error al cargar categorías y configuración:", error);
         // En caso de error, usar categorías generales
-        const defaultCategories = getCategoriesForIndustry('general');
+        const defaultCategories = getCategoriesForIndustry("general");
         setCategories(defaultCategories);
       }
     };
-    
+
     loadCategoriesAndConfig();
   }, []);
 
@@ -161,7 +178,11 @@ export default function EditProductScreen({ navigation, route }) {
       setPrice(productData.price ? productData.price.toString() : "");
       setBasePrice(productData.price ? productData.price.toString() : "");
       setStock(productData.stock ? productData.stock.toString() : "");
-      setLowStockThreshold(productData.lowStockThreshold ? productData.lowStockThreshold.toString() : "5");
+      setLowStockThreshold(
+        productData.lowStockThreshold
+          ? productData.lowStockThreshold.toString()
+          : "5"
+      );
       setCategory(productData.category || "");
       setExpiryDate(
         productData.expiryDate
@@ -174,7 +195,9 @@ export default function EditProductScreen({ navigation, route }) {
         setCustomFields(productData.customFields);
       }
 
-      const configDoc = await getDoc(doc(db, "industryConfig", auth.currentUser.uid));
+      const configDoc = await getDoc(
+        doc(db, "industryConfig", auth.currentUser.uid)
+      );
       if (configDoc.exists()) {
         setIndustryConfig(configDoc.data());
       }
@@ -217,7 +240,7 @@ export default function EditProductScreen({ navigation, route }) {
 
   const handleUpdateProduct = async () => {
     if (!validateForm()) return;
-    
+
     setLoading(true);
     try {
       if (barcode !== product.barcode) {
@@ -248,14 +271,16 @@ export default function EditProductScreen({ navigation, route }) {
         price: parseFloat(price),
         basePrice: basePrice ? parseFloat(basePrice) : parseFloat(price),
         stock: parseInt(stock),
-        lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold) : null,
+        lowStockThreshold: lowStockThreshold
+          ? parseInt(lowStockThreshold)
+          : null,
         category,
         updatedAt: serverTimestamp(),
         expiryDate: expiryDate || null,
         notifyExpiry: notifyExpiry,
         customFields: customFields,
       });
-      
+
       Alert.alert(
         "Producto actualizado",
         "El producto se ha actualizado correctamente",
@@ -281,10 +306,10 @@ export default function EditProductScreen({ navigation, route }) {
         onPress={() => setShowCategoryModal(true)}
       >
         <View style={styles.categorySelectorContent}>
-          <Ionicons 
-            name={getCategoryIcon(category)} 
-            size={24} 
-            color={colors.primary} 
+          <Ionicons
+            name={getCategoryIcon(category)}
+            size={24}
+            color={colors.primary}
             style={styles.categoryIcon}
           />
           <Text style={styles.categoryText}>
@@ -298,88 +323,102 @@ export default function EditProductScreen({ navigation, route }) {
 
   const renderCategoryModal = () => {
     return (
-    <Modal
-      visible={showCategoryModal}
+      <Modal
+        visible={showCategoryModal}
         transparent={true}
         animationType="slide"
-    >
+      >
         <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Seleccionar categoría</Text>
-              <TouchableOpacity
-                onPress={() => setShowCategoryModal(false)}
-              >
-                <Ionicons name="close" size={24} color={colors.text.secondary} />
+              <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
+                <Ionicons
+                  name="close"
+                  size={24}
+                  color={colors.text.secondary}
+                />
               </TouchableOpacity>
             </View>
-            
+
             <FlatList
               data={categories}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                style={[
+                  style={[
                     styles.categoryOption,
-                    category === item.id && styles.selectedCategoryOption
-                ]}
-                onPress={() => {
+                    category === item.id && styles.selectedCategoryOption,
+                  ]}
+                  onPress={() => {
                     setCategory(item.id);
-                  setShowCategoryModal(false);
-                }}
-              >
+                    setShowCategoryModal(false);
+                  }}
+                >
                   <View style={styles.categoryOptionContent}>
-                    <View style={[
-                      styles.categoryIconContainer, 
-                      { backgroundColor: category === item.id ? colors.primary : '#f0f0f0' }
-                    ]}>
-                <Ionicons 
-                        name={getCategoryIcon(item.id)} 
-                        size={20} 
-                        color={category === item.id ? 'white' : colors.primary} 
+                    <View
+                      style={[
+                        styles.categoryIconContainer,
+                        {
+                          backgroundColor:
+                            category === item.id ? colors.primary : "#f0f0f0",
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={getCategoryIcon(item.id)}
+                        size={20}
+                        color={category === item.id ? "white" : colors.primary}
                       />
                     </View>
-                <Text style={[
-                      styles.categoryOptionText,
-                      category === item.id && styles.selectedCategoryOptionText
-                ]}>
+                    <Text
+                      style={[
+                        styles.categoryOptionText,
+                        category === item.id &&
+                          styles.selectedCategoryOptionText,
+                      ]}
+                    >
                       {item.name}
-                </Text>
+                    </Text>
                   </View>
                   {category === item.id && (
-                    <Ionicons name="checkmark" size={24} color={colors.primary} />
+                    <Ionicons
+                      name="checkmark"
+                      size={24}
+                      color={colors.primary}
+                    />
                   )}
-              </TouchableOpacity>
+                </TouchableOpacity>
               )}
             />
+          </View>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
   };
 
   const handleDateSelection = () => {
-    if (Platform.OS === 'web') {
+    if (Platform.OS === "web") {
       Alert.alert(
         "Seleccionar fecha",
         "Por favor ingresa la fecha de vencimiento en formato DD/MM/YYYY",
         [
           {
             text: "Cancelar",
-            style: "cancel"
+            style: "cancel",
           },
           {
             text: "Guardar",
             onPress: (value) => {
-              const dateParts = value.split('/');
+              const dateParts = value.split("/");
               if (dateParts.length === 3) {
                 const day = parseInt(dateParts[0]);
                 const month = parseInt(dateParts[1]) - 1;
                 const year = parseInt(dateParts[2]);
                 setExpiryDate(new Date(year, month, day));
               }
-            }
-          }
+            },
+          },
         ]
       );
     } else {
@@ -431,22 +470,22 @@ export default function EditProductScreen({ navigation, route }) {
   };
 
   const handleDateChange = (event, selectedDate) => {
-    setShowDatePicker(Platform.OS === 'ios');
-    
+    setShowDatePicker(Platform.OS === "ios");
+
     if (selectedDate) {
-      if (currentDateField === 'expiryDate') {
-      setExpiryDate(selectedDate);
+      if (currentDateField === "expiryDate") {
+        setExpiryDate(selectedDate);
       } else if (currentDateField) {
         setCustomFields({
           ...customFields,
-          [currentDateField]: selectedDate
+          [currentDateField]: selectedDate,
         });
       }
     }
   };
 
   if (hasPermission === null) {
-  return (
+    return (
       <View style={styles.cameraPermissionContainer}>
         <Text>Solicitando permiso de cámara...</Text>
       </View>
@@ -511,15 +550,18 @@ export default function EditProductScreen({ navigation, route }) {
   const renderDatePicker = () => {
     return (
       <View style={styles.datePickerContainer}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.datePickerButton}
           onPress={() => {
-            Alert.alert("Fecha", "Selector de fecha temporalmente deshabilitado");
+            Alert.alert(
+              "Fecha",
+              "Selector de fecha temporalmente deshabilitado"
+            );
           }}
         >
           <Ionicons name="calendar-outline" size={24} color={colors.primary} />
           <Text style={styles.datePickerText}>
-            {expiryDate ? expiryDate.toLocaleDateString() : 'Seleccionar fecha'}
+            {expiryDate ? expiryDate.toLocaleDateString() : "Seleccionar fecha"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -528,138 +570,107 @@ export default function EditProductScreen({ navigation, route }) {
 
   const renderCustomFields = () => {
     if (!industryConfig || !industryConfig.customFields) {
-      console.log('No hay configuración de industria o campos personalizados');
+      console.log("No hay configuración de industria o campos personalizados");
       return null;
     }
-    
+
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Información Adicional</Text>
-        
-        {Object.keys(industryConfig.customFields).map(fieldKey => {
-          const field = industryConfig.customFields[fieldKey];
-          if (!field.enabled) return null;
-          
-          return (
-            <View key={fieldKey} style={styles.formGroup}>
-              <Text style={styles.label}>
-                {field.label}
-                {field.required && <Text style={styles.requiredStar}> *</Text>}
-              </Text>
-              
-              {/* Campo de texto simple */}
-              {(field.type === 'text' || !field.type) && (
-        <TextInput
-          style={styles.input}
-                  value={customFields[fieldKey] || ''}
-                  onChangeText={(text) => {
-                    setCustomFields({...customFields, [fieldKey]: text});
-                  }}
-                  placeholder={`Ingrese ${field.label.toLowerCase()}`}
-                />
-              )}
-              
-              {/* Campo de texto multilínea */}
-              {field.type === 'textarea' && (
-                <TextInput
-                  style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
-                  value={customFields[fieldKey] || ''}
-                  onChangeText={(text) => {
-                    setCustomFields({...customFields, [fieldKey]: text});
-                  }}
-                  placeholder={`Ingrese ${field.label.toLowerCase()}`}
-                  multiline={true}
-                  numberOfLines={4}
-                />
-              )}
-              
-              {/* Campo numérico */}
-              {field.type === 'number' && (
-                <TextInput
-                  style={styles.input}
-                  value={customFields[fieldKey] || ''}
-                  onChangeText={(text) => {
-                    const numericValue = text.replace(/[^0-9]/g, '');
-                    setCustomFields({...customFields, [fieldKey]: numericValue});
-                  }}
-                  placeholder={`Ingrese ${field.label.toLowerCase()}`}
-                  keyboardType="numeric"
-                />
-              )}
-              
-              {/* Selector de fecha */}
-              {field.type === 'date' && (
-        <TouchableOpacity
-                  style={styles.input}
-                  onPress={() => {
-                    // Implementar selector de fecha
-                    Alert.alert('Fecha', 'Selector de fecha no implementado');
-                  }}
-                >
-                  <Text style={{ color: customFields[fieldKey] ? '#000' : '#999' }}>
-                    {customFields[fieldKey] || `Seleccionar ${field.label.toLowerCase()}`}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              
-              {/* Selector booleano (Sí/No) */}
-              {field.type === 'boolean' && (
-                <View style={{ flexDirection: 'row', marginTop: 10 }}>
-                  <TouchableOpacity
+        {Object.entries(industryConfig.customFields).map(
+          ([fieldKey, field]) => {
+            // Si el campo no tiene nombre, usar el ID como nombre
+            const fieldName = field.name || fieldKey;
+
+            return (
+              <View key={fieldKey} style={styles.formGroup}>
+                <Text style={styles.label}>
+                  {fieldName}
+                  {field.required && (
+                    <Text style={styles.requiredStar}> *</Text>
+                  )}
+                </Text>
+
+                {/* Campo de texto simple */}
+                {field.type === "text" && (
+                  <TextInput
+                    style={styles.input}
+                    value={customFields[fieldKey] || ""}
+                    onChangeText={(text) => {
+                      setCustomFields({ ...customFields, [fieldKey]: text });
+                    }}
+                    placeholder={`Ingrese ${fieldName.toLowerCase()}`}
+                  />
+                )}
+
+                {/* Campo de texto multilínea */}
+                {field.type === "textarea" && (
+                  <TextInput
                     style={[
-                      styles.booleanOption,
-                      customFields[fieldKey] === true && styles.selectedBooleanOption
+                      styles.input,
+                      { height: 100, textAlignVertical: "top" },
                     ]}
-                    onPress={() => setCustomFields({...customFields, [fieldKey]: true})}
-        >
-          <Text style={[
-                      styles.booleanOptionText,
-                      customFields[fieldKey] === true && styles.selectedBooleanOptionText
-                    ]}>Sí</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[
-                      styles.booleanOption,
-                      customFields[fieldKey] === false && styles.selectedBooleanOption
-                    ]}
-                    onPress={() => setCustomFields({...customFields, [fieldKey]: false})}
-                  >
-                    <Text style={[
-                      styles.booleanOptionText,
-                      customFields[fieldKey] === false && styles.selectedBooleanOptionText
-                    ]}>No</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              
-              {/* Selector de opciones */}
-              {field.type === 'select' && field.options && (
-                <View style={styles.selectContainer}>
-                  {field.options.map((option, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.selectOption,
-                        customFields[fieldKey] === option && styles.selectedSelectOption
-                      ]}
-                      onPress={() => {
-                        setCustomFields({...customFields, [fieldKey]: option});
-                      }}
-                    >
-                      <Text style={[
-                        styles.selectOptionText,
-                        customFields[fieldKey] === option && styles.selectedSelectOptionText
-                      ]}>
-                        {option}
-          </Text>
-        </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-          );
-        })}
+                    value={customFields[fieldKey] || ""}
+                    onChangeText={(text) => {
+                      setCustomFields({ ...customFields, [fieldKey]: text });
+                    }}
+                    placeholder={`Ingrese ${fieldName.toLowerCase()}`}
+                    multiline={true}
+                    numberOfLines={4}
+                  />
+                )}
+
+                {/* Campo numérico */}
+                {field.type === "number" && (
+                  <TextInput
+                    style={styles.input}
+                    value={customFields[fieldKey] || ""}
+                    onChangeText={(text) => {
+                      const numericValue = text.replace(/[^0-9]/g, "");
+                      setCustomFields({
+                        ...customFields,
+                        [fieldKey]: numericValue,
+                      });
+                    }}
+                    placeholder={`Ingrese ${fieldName.toLowerCase()}`}
+                    keyboardType="numeric"
+                  />
+                )}
+
+                {/* Selector de opciones */}
+                {field.type === "select" && field.options && (
+                  <View style={styles.selectContainer}>
+                    {field.options.map((option, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.selectOption,
+                          customFields[fieldKey] === option &&
+                            styles.selectedSelectOption,
+                        ]}
+                        onPress={() => {
+                          setCustomFields({
+                            ...customFields,
+                            [fieldKey]: option,
+                          });
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.selectOptionText,
+                            customFields[fieldKey] === option &&
+                              styles.selectedSelectOptionText,
+                          ]}
+                        >
+                          {option}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          }
+        )}
       </View>
     );
   };
@@ -703,7 +714,7 @@ export default function EditProductScreen({ navigation, route }) {
           <View style={styles.formGroup}>
             <Text style={styles.label}>Fecha de vencimiento (opcional)</Text>
             {renderDatePicker()}
-            
+
             {expiryDate && (
               <View style={styles.notificationOption}>
                 <Text style={styles.notificationText}>
@@ -712,14 +723,18 @@ export default function EditProductScreen({ navigation, route }) {
                 <TouchableOpacity
                   style={[
                     styles.toggleButton,
-                    notifyExpiry ? styles.toggleButtonActive : styles.toggleButtonInactive
+                    notifyExpiry
+                      ? styles.toggleButtonActive
+                      : styles.toggleButtonInactive,
                   ]}
                   onPress={() => setNotifyExpiry(!notifyExpiry)}
                 >
                   <View
                     style={[
                       styles.toggleIndicator,
-                      notifyExpiry ? styles.toggleIndicatorActive : styles.toggleIndicatorInactive
+                      notifyExpiry
+                        ? styles.toggleIndicatorActive
+                        : styles.toggleIndicatorInactive,
                     ]}
                   />
                 </TouchableOpacity>
@@ -727,13 +742,13 @@ export default function EditProductScreen({ navigation, route }) {
             )}
           </View>
           <Text style={styles.label}>Precio</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Precio"
-          value={price}
+          <TextInput
+            style={styles.input}
+            placeholder="Precio"
+            value={price}
             onChangeText={handlePriceChange}
-          keyboardType="decimal-pad"
-        />
+            keyboardType="decimal-pad"
+          />
           {price ? (
             <>
               <View style={styles.percentageHeader}>
@@ -777,14 +792,14 @@ export default function EditProductScreen({ navigation, route }) {
           ) : null}
 
           <Text style={styles.label}>Stock</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Stock"
-          value={stock}
-          onChangeText={setStock}
-          keyboardType="numeric"
-        />
-        
+          <TextInput
+            style={styles.input}
+            placeholder="Stock"
+            value={stock}
+            onChangeText={setStock}
+            keyboardType="numeric"
+          />
+
           <View style={styles.formGroup}>
             <Text style={styles.label}>Umbral de Stock Bajo</Text>
             <TextInput
@@ -796,26 +811,26 @@ export default function EditProductScreen({ navigation, route }) {
             />
             <Text style={styles.helperText}>
               Notificar cuando el stock sea menor o igual a este valor
-          </Text>
+            </Text>
           </View>
-        
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity 
+
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity
               style={[
                 styles.button,
                 styles.saveButton,
                 { flex: 1 },
                 loading && { opacity: 0.7 },
               ]}
-            onPress={handleUpdateProduct}
-            disabled={loading}
-          >
-            {loading ? (
+              onPress={handleUpdateProduct}
+              disabled={loading}
+            >
+              {loading ? (
                 <ActivityIndicator color="white" size="small" />
-            ) : (
+              ) : (
                 <Text style={styles.buttonText}>Guardar Cambios</Text>
-            )}
-          </TouchableOpacity>
+              )}
+            </TouchableOpacity>
           </View>
 
           {renderCustomFields()}
@@ -823,7 +838,7 @@ export default function EditProductScreen({ navigation, route }) {
       </View>
       {renderCategoryModal()}
       {renderBarcodeScanner()}
-      </ScrollView>
+    </ScrollView>
   );
 }
 
@@ -858,9 +873,9 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   categorySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     backgroundColor: colors.background,
     borderRadius: 8,
     borderWidth: 1,
@@ -870,8 +885,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   categorySelectorContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   categoryIcon: {
     marginRight: 10,
@@ -913,52 +928,52 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
-    width: '90%',
-    maxHeight: '80%',
+    width: "90%",
+    maxHeight: "80%",
     padding: 20,
   },
   modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
     paddingBottom: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: colors.text.primary,
   },
   categoryOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 12,
     paddingHorizontal: 10,
     borderRadius: 8,
   },
   categoryOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
   },
   selectedCategoryOption: {
-    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    backgroundColor: "rgba(76, 175, 80, 0.1)",
   },
   categoryIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginRight: 15,
   },
   categoryOptionText: {
@@ -966,7 +981,7 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   selectedCategoryOptionText: {
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: colors.primary,
   },
   datePickerContainer: {
@@ -990,9 +1005,9 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
   notificationOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 10,
     paddingVertical: 5,
   },
@@ -1011,16 +1026,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   toggleButtonInactive: {
-    backgroundColor: '#e0e0e0',
+    backgroundColor: "#e0e0e0",
   },
   toggleIndicator: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: 'white',
+    backgroundColor: "white",
   },
   toggleIndicatorActive: {
-    marginLeft: 'auto',
+    marginLeft: "auto",
   },
   toggleIndicatorInactive: {
     marginLeft: 0,
@@ -1041,8 +1056,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   requiredStar: {
-    color: 'red',
-    fontWeight: 'bold',
+    color: "red",
+    fontWeight: "bold",
   },
   barcodeContainer: {
     flexDirection: "row",
@@ -1185,8 +1200,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   switchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.background,
     borderRadius: 8,
     borderWidth: 1,
@@ -1194,8 +1209,8 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   pickerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.background,
     borderRadius: 8,
     borderWidth: 1,
@@ -1206,10 +1221,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   selectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'white',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "white",
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 5,
@@ -1222,33 +1237,33 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 10,
     padding: 20,
-    width: '80%',
-    maxHeight: '80%',
+    width: "80%",
+    maxHeight: "80%",
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 15,
     color: colors.text.primary,
   },
   optionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   selectedOptionItem: {
-    backgroundColor: 'rgba(0, 128, 0, 0.05)',
+    backgroundColor: "rgba(0, 128, 0, 0.05)",
   },
   optionText: {
     fontSize: 16,
@@ -1256,19 +1271,19 @@ const styles = StyleSheet.create({
   },
   selectedOptionText: {
     color: colors.primary,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   cancelButton: {
     marginTop: 15,
     padding: 15,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     borderRadius: 5,
-    alignItems: 'center',
+    alignItems: "center",
   },
   cancelButtonText: {
     color: colors.text.primary,
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   booleanOption: {
     flex: 1,
@@ -1277,7 +1292,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 5,
     marginRight: 5,
-    alignItems: 'center',
+    alignItems: "center",
   },
   selectedBooleanOption: {
     backgroundColor: colors.primary,
@@ -1287,37 +1302,39 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   selectedBooleanOptionText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
   },
   selectContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     marginTop: 5,
+    gap: 8,
   },
   selectOption: {
-    padding: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 5,
-    margin: 5,
+    backgroundColor: "#f0f0f0",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    minWidth: 60,
+    alignItems: "center",
   },
   selectedSelectOption: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   selectOptionText: {
-    color: colors.text.primary,
+    fontSize: 14,
+    color: "#333",
   },
   selectedSelectOptionText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
   },
-}); 
+});
 
 const getCategoryName = (categoryId, categoriesList) => {
-  const category = categoriesList.find(cat => cat.id === categoryId);
-  return category ? category.name : 'Sin categoría';
+  const category = categoriesList.find((cat) => cat.id === categoryId);
+  return category ? category.name : "Sin categoría";
 };
 
 const getCategoryIcon = (categoryId) => {
@@ -1325,4 +1342,3 @@ const getCategoryIcon = (categoryId) => {
   // This is a placeholder and should be replaced with the actual implementation
   return "category-icon-placeholder";
 };
-
