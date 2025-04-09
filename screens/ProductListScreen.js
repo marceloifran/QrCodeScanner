@@ -44,6 +44,7 @@ export default function ProductListScreen({ navigation, route }) {
   const [sortOrder, setSortOrder] = useState("asc");
   const [categories, setCategories] = useState([]);
   const [industryType, setIndustryType] = useState("general");
+  const [loadError, setLoadError] = useState(false);
 
   const { products, loading, loadProducts } = useProducts();
 
@@ -53,6 +54,7 @@ export default function ProductListScreen({ navigation, route }) {
   // Definir la función loadCategories dentro del componente
   const loadCategories = async () => {
     try {
+      setLoadError(false);
       // Primero intentamos cargar la industria del usuario
       const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
       const businessInfoDoc = await getDoc(businessInfoRef);
@@ -65,31 +67,38 @@ export default function ProductListScreen({ navigation, route }) {
 
       // Obtenemos las categorías directamente de categoryUtils
       const industryCategories = getCategoriesForIndustry(userIndustry);
-      console.log(
-        "ProductListScreen - Cargando categorías para industria:",
-        userIndustry
-      );
-      setCategories(industryCategories);
+      setCategories(industryCategories || []);
 
       // Resetear el filtro de categoría si la categoría seleccionada ya no existe
       if (selectedCategory) {
-        const categoryExists = industryCategories.some(
+        const categoryExists = industryCategories && industryCategories.some(
           (cat) => cat.id === selectedCategory
         );
         if (!categoryExists) {
-          console.log(
-            "La categoría seleccionada ya no existe, reseteando filtro"
-          );
           setSelectedCategory(null);
         }
       }
     } catch (error) {
       console.error("Error al cargar la industria:", error);
+      setLoadError(true);
       // En caso de error, usar categorías generales
       const defaultCategories = getCategoriesForIndustry("general");
-      setCategories(defaultCategories);
+      setCategories(defaultCategories || []);
     }
   };
+
+  useEffect(() => {
+    loadCategories();
+
+    // Añadir un listener para cuando la pantalla recibe el foco
+    const unsubscribe = navigation.addListener("focus", () => {
+      loadCategories();
+      loadProducts(); // También recargamos los productos
+    });
+
+    // Limpiar el listener cuando el componente se desmonta
+    return unsubscribe;
+  }, [navigation]);
 
   useEffect(() => {
     // Verificar si hay parámetros de navegación para filtros
@@ -116,20 +125,6 @@ export default function ProductListScreen({ navigation, route }) {
   }, [route.params]);
 
   useEffect(() => {
-    loadCategories();
-
-    // Añadir un listener para cuando la pantalla recibe el foco
-    const unsubscribe = navigation.addListener("focus", () => {
-      console.log("ProductListScreen recibió el foco - recargando categorías");
-      loadCategories();
-      loadProducts(); // También recargamos los productos
-    });
-
-    // Limpiar el listener cuando el componente se desmonta
-    return unsubscribe;
-  }, [navigation]);
-
-  useEffect(() => {
     if (products.length > 0) {
     }
   }, [products]);
@@ -153,17 +148,30 @@ export default function ProductListScreen({ navigation, route }) {
     }
   }, [products]);
 
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (loading) {
+        setLoadError(true);
+      }
+    }, 10000); // 10 segundos de timeout
+
+    return () => clearTimeout(timeout);
+  }, [loading]);
+
   const filteredProducts = useMemo(() => {
     if (!products || products.length === 0) return [];
 
     return products
       .filter((product) => {
         // Filtro de búsqueda
-        if (
-          searchQuery &&
-          !product.name.toLowerCase().includes(searchQuery.toLowerCase())
-        ) {
-          return false;
+        if (searchQuery) {
+          const searchLower = searchQuery.toLowerCase();
+          const nameMatch = product.name.toLowerCase().includes(searchLower);
+          const barcodeMatch = product.barcode && product.barcode.includes(searchQuery);
+          
+          if (!nameMatch && !barcodeMatch) {
+            return false;
+          }
         }
 
         // Filtro de stock bajo
@@ -513,11 +521,30 @@ export default function ProductListScreen({ navigation, route }) {
       {renderSortHeader()}
 
       {loading ? (
-        <ActivityIndicator
-          size="large"
-          color={colors.primary}
-          style={styles.loader}
-        />
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator
+            size="large"
+            color={colors.primary}
+            style={styles.loader}
+          />
+          <Text style={styles.loaderText}>Cargando datos...</Text>
+        </View>
+      ) : loadError ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            Ocurrió un error al cargar los datos
+          </Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => {
+              setLoadError(false);
+              loadProducts();
+              loadCategories();
+            }}
+          >
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={filteredProducts}
@@ -528,6 +555,9 @@ export default function ProductListScreen({ navigation, route }) {
           maxToRenderPerBatch={10}
           windowSize={5}
           removeClippedSubviews={true}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
@@ -676,10 +706,37 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#333",
   },
-  loader: {
+  loaderContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loaderText: {
+    marginTop: 10,
+    color: colors.primary,
+    fontSize: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: colors.error,
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 16,
   },
   productList: {
     padding: 10,

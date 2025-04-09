@@ -66,20 +66,14 @@ export default function RegisterScreen({ navigation }) {
     
     setLoading(true);
     try {
-      console.log('Iniciando registro de usuario...');
-      
       // Crear usuario en Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      
-      console.log('Usuario creado:', user.uid);
       
       // Actualizar el perfil del usuario con el nombre del negocio
       await updateProfile(user, {
         displayName: businessName
       });
-      
-      console.log('Perfil actualizado');
       
       // Guardar información del negocio en Firestore
       await setDoc(doc(db, 'businessInfo', user.uid), {
@@ -88,16 +82,12 @@ export default function RegisterScreen({ navigation }) {
         createdAt: new Date()
       });
       
-      console.log('Información del negocio guardada');
-      
       // Crear configuración de campos personalizados según la industria
       await setDoc(doc(db, 'industryConfig', user.uid), {
         industry: industry,
         customFields: getCustomFieldsForIndustry(industry),
         createdAt: new Date()
       });
-      
-      console.log('Configuración de industria guardada');
       
       // Crear documento de notificaciones
       await setDoc(doc(db, 'notificationSettings', user.uid), {

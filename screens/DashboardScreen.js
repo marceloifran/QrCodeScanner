@@ -42,7 +42,6 @@ export default function DashboardScreen({ navigation }) {
   
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      console.log('DashboardScreen recibió el foco - recargando datos');
       loadDashboardData();
       checkNotifications();
       loadCategories();
@@ -173,7 +172,7 @@ const goToNewSale = () => {
   };
   
   const navigateToCategory = (categoryId) => {
-    navigation.navigate('ProductList', { filter: 'category', categoryId: categoryId });
+    navigation.navigate('ProductList', { filter: 'category', category: categoryId });
   };
   
   const viewAllSales = () => {
@@ -217,17 +216,13 @@ const goToNewSale = () => {
       let userIndustry = 'general';
       if (businessInfoDoc.exists()) {
         const data = businessInfoDoc.data();
-        // Verificar más explícitamente si la propiedad industry existe
         if (data && 'industry' in data && data.industry) {
           userIndustry = data.industry;
-        } else {
-          console.log('La propiedad industry no existe en los datos del negocio, usando valor por defecto');
         }
       }
       
       // Obtener categorías directamente de categoryUtils
       const industryCategories = getCategoriesForIndustry(userIndustry);
-      console.log('DashboardScreen - Cargando categorías para industria:', userIndustry);
       setCategories(industryCategories);
       
     } catch (error) {

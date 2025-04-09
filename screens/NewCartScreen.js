@@ -108,11 +108,8 @@ export default function NewCartScreen({ navigation, route }) {
         total: parseFloat(total)
       };
       
-      console.log('Datos de venta a guardar:', saleData);
-      
       // Guardar la venta
       const saleRef = await addDoc(collection(db, 'sales'), saleData);
-      console.log('Venta guardada con ID:', saleRef.id);
       
       // Actualizar el stock de cada producto
       const updatePromises = cartItems.map(async (item) => {
@@ -123,9 +120,7 @@ export default function NewCartScreen({ navigation, route }) {
           const currentStock = productSnap.data().stock;
           const newStock = Math.max(0, currentStock - item.quantity);
           
-          console.log(`Actualizando stock de ${item.name}: ${currentStock} -> ${newStock}`);
-          
-          return updateDoc(productRef, {
+          await updateDoc(productRef, {
             stock: newStock,
             updatedAt: serverTimestamp()
           });
@@ -141,7 +136,6 @@ export default function NewCartScreen({ navigation, route }) {
         [{ text: 'OK', onPress: () => navigation.navigate('Dashboard') }]
       );
     } catch (error) {
-      console.error('Error al procesar la venta:', error);
       Alert.alert('Error', 'No se pudo completar la venta: ' + error.message);
     } finally {
       setLoading(false);

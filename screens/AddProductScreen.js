@@ -144,11 +144,6 @@ export default function AddProductScreen({ navigation }) {
           setIndustryType(userIndustry);
         }
 
-        console.log(
-          "AddProduct - Cargando datos para industria:",
-          userIndustry
-        );
-
         // Obtener categorías directamente de categoryUtils
         const industryCategories = getCategoriesForIndustry(userIndustry);
         setCategories(industryCategories);
@@ -162,9 +157,6 @@ export default function AddProductScreen({ navigation }) {
 
           // Verificar que la industria en la configuración coincida con la industria actual
           if (config.industry !== userIndustry) {
-            console.log(
-              "La industria en la configuración no coincide con la industria actual, actualizando..."
-            );
             // Actualizar la configuración con los campos correctos para la industria actual
             const updatedConfig = {
               ...config,
@@ -207,38 +199,9 @@ export default function AddProductScreen({ navigation }) {
             }
             setCustomFields(initialCustomFields);
           }
-        } else {
-          // Si no existe configuración, crear una basada en la industria
-          const defaultConfig = {
-            industry: userIndustry,
-            customFields: getCustomFieldsForIndustry(userIndustry),
-            createdAt: new Date(),
-          };
-
-          // Guardar la configuración por defecto
-          await setDoc(
-            doc(db, "industryConfig", auth.currentUser.uid),
-            defaultConfig
-          );
-
-          setIndustryConfig(defaultConfig);
-
-          // Inicializar campos personalizados
-          const initialCustomFields = {};
-          if (defaultConfig.customFields) {
-            Object.keys(defaultConfig.customFields).forEach((field) => {
-              if (defaultConfig.customFields[field].enabled) {
-                initialCustomFields[field] = "";
-              }
-            });
-          }
-          setCustomFields(initialCustomFields);
         }
       } catch (error) {
         console.error("Error al cargar categorías y configuración:", error);
-        // En caso de error, usar categorías generales
-        const defaultCategories = getCategoriesForIndustry("general");
-        setCategories(defaultCategories);
       }
     };
 
@@ -287,9 +250,8 @@ export default function AddProductScreen({ navigation }) {
   };
 
   const handleBarCodeScanned = ({ type, data }) => {
-    console.log(`Código escaneado: ${data} (Tipo: ${type})`);
-    setBarcode(data);
     setScanning(false);
+    setBarcode(data);
   };
 
   const validateForm = () => {
@@ -400,11 +362,6 @@ export default function AddProductScreen({ navigation }) {
       if (currentDateField === "expiryDate") {
         setExpiryDate(selectedDate);
       } else if (currentDateField) {
-        console.log(
-          "Actualizando campo personalizado de fecha:",
-          currentDateField,
-          selectedDate
-        );
         setCustomFields({
           ...customFields,
           [currentDateField]: selectedDate,
@@ -471,11 +428,8 @@ export default function AddProductScreen({ navigation }) {
 
   const renderCustomFields = () => {
     if (!industryConfig || !industryConfig.customFields) {
-      console.log("No hay configuración de industria o campos personalizados");
       return null;
     }
-
-    console.log("Renderizando campos personalizados para industria:", industryType);
 
     return (
       <View style={styles.section}>

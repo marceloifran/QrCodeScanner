@@ -29,6 +29,7 @@ import { db, auth } from "../firebase/config";
 import { colors } from "../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { Camera, CameraView } from "expo-camera"; // Import Camera components
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { getCategoriesForIndustry } from "../utils/categoryUtils";
 
 export default function EditProductScreen({ navigation, route }) {
@@ -310,30 +311,21 @@ export default function EditProductScreen({ navigation, route }) {
       </Modal>
     );
   };
-
   const handleDateSelection = () => {
     if (Platform.OS === "web") {
-      Alert.alert(
+      // En web, podrías implementar un input modal o dejarlo para más adelante
+      Alert.prompt(
         "Seleccionar fecha",
-        "Por favor ingresa la fecha de vencimiento en formato DD/MM/YYYY",
-        [
-          {
-            text: "Cancelar",
-            style: "cancel",
-          },
-          {
-            text: "Guardar",
-            onPress: (value) => {
-              const dateParts = value.split("/");
-              if (dateParts.length === 3) {
-                const day = parseInt(dateParts[0]);
-                const month = parseInt(dateParts[1]) - 1;
-                const year = parseInt(dateParts[2]);
-                setExpiryDate(new Date(year, month, day));
-              }
-            },
-          },
-        ]
+        "Ingresa la fecha en formato DD/MM/YYYY",
+        (value) => {
+          const parts = value.split("/");
+          if (parts.length === 3) {
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const year = parseInt(parts[2]);
+            setExpiryDate(new Date(year, month, day));
+          }
+        }
       );
     } else {
       setShowDatePicker(true);
@@ -459,18 +451,24 @@ export default function EditProductScreen({ navigation, route }) {
       <View style={styles.datePickerContainer}>
         <TouchableOpacity
           style={styles.datePickerButton}
-          onPress={() => {
-            Alert.alert(
-              "Fecha",
-              "Selector de fecha temporalmente deshabilitado"
-            );
-          }}
+          onPress={handleDateSelection}
         >
           <Ionicons name="calendar-outline" size={24} color={colors.primary} />
           <Text style={styles.datePickerText}>
             {expiryDate ? expiryDate.toLocaleDateString() : "Seleccionar fecha"}
           </Text>
         </TouchableOpacity>
+
+        {/* Renderiza el selector solo en Android/iOS */}
+        {showDatePicker && Platform.OS !== "web" && (
+          <DateTimePicker
+            value={expiryDate || new Date()}
+            mode="date"
+            display="default"
+            onChange={handleDateChange}
+            minimumDate={new Date()}
+          />
+        )}
       </View>
     );
   };
