@@ -36,6 +36,7 @@ import {
   getCategoriesForIndustry,
   getCustomFieldsForIndustry,
 } from "../utils/categoryUtils";
+import { verifyProductLimit } from "../utils/subscriptionUtils";
 
 export default function AddProductScreen({ navigation }) {
   const [barcode, setBarcode] = useState("");
@@ -60,6 +61,7 @@ export default function AddProductScreen({ navigation }) {
   const [showSelectModal, setShowSelectModal] = useState(false);
   const [currentSelectField, setCurrentSelectField] = useState(null);
   const [currentDateField, setCurrentDateField] = useState(null);
+  const [productLimit, setProductLimit] = useState(null);
 
   const commonPercentages = ["10", "15", "20", "25", "30", "35", "40", "50"];
 
@@ -208,6 +210,19 @@ export default function AddProductScreen({ navigation }) {
     loadCategoriesAndConfig();
   }, []);
 
+  useEffect(() => {
+    const loadProductLimit = async () => {
+      try {
+        const limit = await verifyProductLimit(auth.currentUser.uid);
+        setProductLimit(limit);
+      } catch (error) {
+        console.error("Error al cargar límite de productos:", error);
+      }
+    };
+
+    loadProductLimit();
+  }, []);
+
   // Función para aplicar porcentaje al precio
   const applyPercentage = (percentage) => {
     if (!price) return;
@@ -268,8 +283,14 @@ export default function AddProductScreen({ navigation }) {
   const handleAddProduct = async () => {
     if (!validateForm()) return;
 
-    setLoading(true);
     try {
+      // Verificar si el usuario puede agregar más productos según su plan
+      const canAddProduct = await verifyProductLimit(navigation);
+      if (!canAddProduct) {
+        return; // La función verifyProductLimit ya muestra una alerta si es necesario
+      }
+
+      setLoading(true);
       // Si hay un código de barras, verificar si ya existe
       if (barcode) {
         const productsRef = collection(db, "products");

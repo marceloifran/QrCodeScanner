@@ -77,7 +77,7 @@ export default function LoginScreen() {
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={styles.appName}>MiniMarket</Text>
+          <Text style={styles.appName}>Ifsin Negocios</Text>
           <Text style={styles.tagline}>Gestión de inventario simple y eficiente</Text>
         </View>
         
@@ -139,7 +139,7 @@ export default function LoginScreen() {
         
         <View style={styles.footer}>
           <Text style={styles.footerText}>¿No tienes una cuenta?</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('SignUp')}>
+          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
             <Text style={styles.signUpText}>Regístrate</Text>
           </TouchableOpacity>
         </View>

@@ -11,29 +11,21 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Modal
+  Modal,
+  StatusBar
 } from 'react-native';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
-import { Picker } from 'react-native';
-import { getCategoriesForIndustry, getCustomFieldsForIndustry } from '../utils/categoryUtils';
+import { getCustomFieldsForIndustry } from '../utils/categoryUtils';
 
 // Lista de industrias disponibles
 const INDUSTRY_TYPES = [
   { id: 'general', name: 'Tienda General', icon: 'storefront-outline' },
   { id: 'grocery', name: 'Supermercado/Almacén', icon: 'cart-outline' },
   { id: 'clothing', name: 'Tienda de Ropa', icon: 'shirt-outline' },
-  { id: 'pharmacy', name: 'Farmacia', icon: 'medical-outline' },
-  { id: 'electronics', name: 'Electrónica', icon: 'hardware-chip-outline' },
-  { id: 'restaurant', name: 'Restaurante/Cafetería', icon: 'restaurant-outline' },
-  { id: 'bakery', name: 'Panadería', icon: 'fast-food-outline' },
-  { id: 'hardware', name: 'Ferretería', icon: 'construct-outline' },
-  { id: 'beauty', name: 'Belleza/Cosmética', icon: 'cut-outline' },
-  { id: 'bookstore', name: 'Librería', icon: 'book-outline' },
-  { id: 'other', name: 'Otro', icon: 'ellipsis-horizontal-outline' }
 ];
 
 export default function RegisterScreen({ navigation }) {
@@ -46,6 +38,7 @@ export default function RegisterScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showIndustryModal, setShowIndustryModal] = useState(false);
+  const [subscriptionPlan, setSubscriptionPlan] = useState('base');
   
   const handleRegister = async () => {
     // Validaciones
@@ -79,7 +72,9 @@ export default function RegisterScreen({ navigation }) {
       await setDoc(doc(db, 'businessInfo', user.uid), {
         name: businessName,
         industry: industry,
-        createdAt: new Date()
+        createdAt: new Date(),
+        subscriptionPlan: subscriptionPlan,
+        subscriptionExpiration: null
       });
       
       // Crear configuración de campos personalizados según la industria
@@ -138,25 +133,17 @@ export default function RegisterScreen({ navigation }) {
   };
   
   const renderIndustrySelector = () => (
-    <View style={styles.formGroup}>
-      <Text style={styles.pickerLabel}>Tipo de Negocio</Text>
-      <View style={styles.pickerWrapper}>
-        <Ionicons 
-          name={getIndustryIcon(industry)} 
-          size={22} 
-          color={colors.text.secondary} 
-          style={styles.pickerIcon} 
-        />
-        <TouchableOpacity 
-          style={styles.industrySelector}
-          onPress={() => setShowIndustryModal(true)}
-        >
-          <Text style={styles.industrySelectorText}>
-            {INDUSTRY_TYPES.find(item => item.id === industry)?.name || 'Seleccionar tipo de negocio'}
-          </Text>
-          <Ionicons name="chevron-down" size={20} color={colors.text.secondary} />
-        </TouchableOpacity>
-      </View>
+    <View style={styles.inputContainer}>
+      <Ionicons name={getIndustryIcon(industry)} size={20} color="#666" style={styles.inputIcon} />
+      <TouchableOpacity 
+        style={styles.industrySelector}
+        onPress={() => setShowIndustryModal(true)}
+      >
+        <Text style={styles.industrySelectorText}>
+          {INDUSTRY_TYPES.find(item => item.id === industry)?.name || 'Seleccionar tipo de negocio'}
+        </Text>
+      </TouchableOpacity>
+      <Ionicons name="chevron-down" size={20} color="#666" />
       
       {/* Modal para seleccionar industria */}
       <Modal
@@ -196,27 +183,46 @@ export default function RegisterScreen({ navigation }) {
     </View>
   );
   
+  const renderSubscriptionPlanSelector = () => (
+    <View style={styles.inputContainer}>
+      <Text style={styles.subscriptionPlanText}>Plan de suscripción:</Text>
+      <TouchableOpacity 
+        style={styles.subscriptionPlanSelector}
+        onPress={() => navigation.navigate('SubscriptionPlans', { setSubscriptionPlan })}
+      >
+        <Text style={styles.subscriptionPlanSelectorText}>{subscriptionPlan}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+  
   return (
     <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="storefront" size={80} color={colors.primary} />
-          </View>
-          <Text style={styles.title}>Registra tu Negocio</Text>
-          <Text style={styles.subtitle}>Crea una cuenta para gestionar tu inventario y ventas</Text>
+      <StatusBar barStyle="light-content" />
+      
+      <View style={[styles.background, { backgroundColor: '#28a745' }]} />
+      
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('../assets/icon.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
+          <Text style={styles.appName}>Ifsin Negocios</Text>
+          <Text style={styles.tagline}>Crea tu cuenta para gestionar tu inventario</Text>
         </View>
         
-        <View style={styles.form}>
+        <View style={styles.formContainer}>
           {/* Correo Electrónico */}
           <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={22} color={colors.text.secondary} style={styles.inputIcon} />
+            <Ionicons name="mail-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Correo Electrónico"
+              placeholderTextColor="#999"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
@@ -226,54 +232,57 @@ export default function RegisterScreen({ navigation }) {
           
           {/* Contraseña */}
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={22} color={colors.text.secondary} style={styles.inputIcon} />
+            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Contraseña"
+              placeholderTextColor="#999"
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
             />
             <TouchableOpacity 
-              style={styles.eyeIcon}
+              style={styles.passwordToggle}
               onPress={() => setShowPassword(!showPassword)}
             >
               <Ionicons 
                 name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                size={22} 
-                color={colors.text.secondary} 
+                size={20} 
+                color="#666" 
               />
             </TouchableOpacity>
           </View>
           
           {/* Confirmar Contraseña */}
           <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={22} color={colors.text.secondary} style={styles.inputIcon} />
+            <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Confirmar Contraseña"
+              placeholderTextColor="#999"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry={!showConfirmPassword}
             />
             <TouchableOpacity 
-              style={styles.eyeIcon}
+              style={styles.passwordToggle}
               onPress={() => setShowConfirmPassword(!showConfirmPassword)}
             >
               <Ionicons 
                 name={showConfirmPassword ? "eye-off-outline" : "eye-outline"} 
-                size={22} 
-                color={colors.text.secondary} 
+                size={20} 
+                color="#666" 
               />
             </TouchableOpacity>
           </View>
           
           {/* Nombre del Negocio */}
           <View style={styles.inputContainer}>
-            <Ionicons name="storefront-outline" size={22} color={colors.text.secondary} style={styles.inputIcon} />
+            <Ionicons name="storefront-outline" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Nombre del Negocio"
+              placeholderTextColor="#999"
               value={businessName}
               onChangeText={setBusinessName}
             />
@@ -282,6 +291,9 @@ export default function RegisterScreen({ navigation }) {
           {/* Tipo de Industria */}
           {renderIndustrySelector()}
           
+          {/* Plan de Suscripción */}
+          {renderSubscriptionPlanSelector()}
+          
           {/* Botón de Registro */}
           <TouchableOpacity 
             style={styles.registerButton}
@@ -289,19 +301,18 @@ export default function RegisterScreen({ navigation }) {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator size="small" color="white" />
+              <ActivityIndicator color="white" />
             ) : (
               <Text style={styles.registerButtonText}>Crear Cuenta</Text>
             )}
           </TouchableOpacity>
-          
-          {/* Enlace para iniciar sesión */}
-          <View style={styles.loginLinkContainer}>
-            <Text style={styles.loginLinkText}>¿Ya tienes una cuenta?</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-              <Text style={styles.loginLink}>Iniciar Sesión</Text>
-            </TouchableOpacity>
-          </View>
+        </View>
+        
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>¿Ya tienes una cuenta?</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <Text style={styles.loginLink}>Iniciar Sesión</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -311,162 +322,156 @@ export default function RegisterScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
-  scrollView: {
-    flex: 1,
+  background: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '100%',
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 30,
-  },
-  header: {
-    alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 30,
+    justifyContent: 'center',
+    padding: 20,
   },
   logoContainer: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logo: {
     width: 100,
     height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: colors.primary,
+    borderRadius: 20,
     marginBottom: 10,
   },
-  subtitle: {
-    fontSize: 16,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    paddingHorizontal: 20,
+  appName: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: 'white',
+    marginBottom: 5,
   },
-  form: {
-    paddingHorizontal: 20,
+  tagline: {
+    fontSize: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textAlign: 'center',
+  },
+  formContainer: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    height: 55,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
+    marginBottom: 20,
   },
   inputIcon: {
     marginRight: 10,
   },
   input: {
     flex: 1,
-    height: '100%',
+    height: 50,
+    color: '#333',
     fontSize: 16,
-    color: colors.text.primary,
   },
-  eyeIcon: {
+  passwordToggle: {
     padding: 10,
   },
-  pickerContainer: {
-    marginBottom: 15,
-  },
-  pickerLabel: {
-    fontSize: 16,
-    color: colors.text.secondary,
-    marginBottom: 8,
-    marginLeft: 5,
-  },
-  pickerWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 15,
-    height: 55,
-  },
-  pickerIcon: {
-    marginRight: 10,
-  },
-  picker: {
+  industrySelector: {
     flex: 1,
     height: 50,
-    color: colors.text.primary,
+    justifyContent: 'center',
+  },
+  industrySelectorText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  subscriptionPlanText: {
+    fontSize: 16,
+    color: '#333',
+    marginRight: 10,
+  },
+  subscriptionPlanSelector: {
+    flex: 1,
+    height: 50,
+    justifyContent: 'center',
+  },
+  subscriptionPlanSelectorText: {
+    fontSize: 16,
+    color: '#333',
   },
   registerButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#28a745',
     borderRadius: 10,
-    height: 55,
+    height: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 10,
   },
   registerButtonText: {
     color: 'white',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
-  loginLinkContainer: {
+  footer: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     marginTop: 20,
+    marginBottom: 30,
   },
-  loginLinkText: {
-    color: colors.text.secondary,
+  footerText: {
+    color: 'white',
+    fontSize: 14,
     marginRight: 5,
   },
   loginLink: {
-    color: colors.primary,
+    color: 'white',
     fontWeight: 'bold',
-  },
-  formGroup: {
-    marginBottom: 15,
-  },
-  industrySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  industrySelectorText: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text.primary,
+    fontSize: 14,
+    textDecorationLine: 'underline',
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
+    backgroundColor: 'white',
+    borderRadius: 20,
     padding: 20,
     width: '80%',
-    alignSelf: 'center',
     maxHeight: '80%',
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: colors.primary,
-    marginBottom: 20,
+    color: '#28a745',
+    marginBottom: 15,
+    textAlign: 'center',
   },
   industryOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
   },
   industryOptionIcon: {
-    marginRight: 10,
+    marginRight: 15,
   },
   industryOptionText: {
     flex: 1,
     fontSize: 16,
-    color: colors.text.primary,
+    color: '#333',
   },
-}); 
+});

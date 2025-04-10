@@ -53,6 +53,14 @@ export default function DashboardScreen({ navigation }) {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
+      // Verificar que el usuario esté autenticado
+      if (!auth.currentUser || !auth.currentUser.uid) {
+        console.log('Usuario no autenticado');
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
       // Cargar productos
       const productsQuery = query(
         collection(db, 'products'),
@@ -65,31 +73,36 @@ export default function DashboardScreen({ navigation }) {
       }));
       
       // Contar productos totales
-      const totalProducts = productsData.length;
+      const totalProducts = productsData ? productsData.length : 0;
       
       // Calcular valor total del inventario
-      const inventoryValue = productsData.reduce((total, product) => {
-        return total + (product.price * product.stock);
-      }, 0);
+      const inventoryValue = productsData ? productsData.reduce((total, product) => {
+        const price = product.price || 0;
+        const stock = product.stock || 0;
+        return total + (price * stock);
+      }, 0) : 0;
       
       // Filtrar productos con stock bajo
-      const lowStockData = productsData.filter(product => {
+      const lowStockData = productsData ? productsData.filter(product => {
         const threshold = product.lowStockThreshold || 5;
-        return product.stock <= threshold;
-      });
+        const stock = product.stock || 0;
+        return stock <= threshold;
+      }) : [];
       
       // Contar productos con stock bajo
-      const lowStockCount = lowStockData.length;
+      const lowStockCount = lowStockData ? lowStockData.length : 0;
       
       // Contar productos por categoría
       const categoryCountsData = {};
-      productsData.forEach(product => {
-        const category = product.category || 'sin-categoria';
-        categoryCountsData[category] = (categoryCountsData[category] || 0) + 1;
-      });
+      if (productsData && productsData.length > 0) {
+        productsData.forEach(product => {
+          const category = product.category || 'sin-categoria';
+          categoryCountsData[category] = (categoryCountsData[category] || 0) + 1;
+        });
+      }
       
-      setCategoryCounts(categoryCountsData);
-      setLowStockProducts(lowStockData.slice(0, 5));
+      setCategoryCounts(categoryCountsData || {});
+      setLowStockProducts(lowStockData && lowStockData.length > 0 ? lowStockData.slice(0, 5) : []);
       
       // Cargar ventas
       const salesQuery = query(
@@ -97,30 +110,35 @@ export default function DashboardScreen({ navigation }) {
         where('userId', '==', auth.currentUser.uid)
       );
       const salesSnapshot = await getDocs(salesQuery);
-      const allSalesData = salesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().date?.toDate() || new Date()
-      }));
+      const allSalesData = salesSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          date: data.date?.toDate ? data.date.toDate() : new Date(),
+          total: data.total || 0
+        };
+      });
       
       // Ordenar ventas por fecha para mostrar las más recientes
-      const sortedSales = [...allSalesData].sort((a, b) => b.date - a.date);
+      const sortedSales = allSalesData && allSalesData.length > 0 ? 
+        [...allSalesData].sort((a, b) => b.date - a.date) : [];
       
       // Contar ventas totales (todas, no solo las recientes)
-      const totalSales = allSalesData.length;
+      const totalSales = allSalesData ? allSalesData.length : 0;
       
       // Calcular ingresos totales
-      const totalIncome = allSalesData.reduce((sum, sale) => sum + (sale.total || 0), 0);
+      const totalIncome = allSalesData ? allSalesData.reduce((sum, sale) => sum + (sale.total || 0), 0) : 0;
       
-      setRecentSales(sortedSales.slice(0, 5)); // Solo mostrar las 5 más recientes
+      setRecentSales(sortedSales && sortedSales.length > 0 ? sortedSales.slice(0, 5) : []);
       
       // Actualizar estadísticas
       setStats({
-        totalProducts,
-        lowStockCount,
-        totalSales,
-        totalIncome,
-        inventoryValue
+        totalProducts: totalProducts || 0,
+        lowStockCount: lowStockCount || 0,
+        totalSales: totalSales || 0,
+        totalIncome: totalIncome || 0,
+        inventoryValue: inventoryValue || 0
       });
       
     } catch (error) {
@@ -147,7 +165,8 @@ export default function DashboardScreen({ navigation }) {
       const lowStockProducts = querySnapshot.docs.filter(doc => {
         const product = doc.data();
         const threshold = product.lowStockThreshold || 5;
-        return product.stock <= threshold;
+        const stock = product.stock || 0;
+        return stock <= threshold;
       });
       
       setNotificationCount(lowStockProducts.length);
@@ -355,7 +374,7 @@ const goToNewSale = () => {
             showsHorizontalScrollIndicator={false}
             style={styles.categoriesContainer}
           >
-            {categories.slice(0, 6).map((category) => (
+            {categories && categories.length > 0 ? categories.slice(0, 6).map((category) => (
               <TouchableOpacity
                 key={category.id}
                 style={styles.categoryCard}
@@ -364,7 +383,7 @@ const goToNewSale = () => {
                 <View style={[styles.categoryColorIndicator, { backgroundColor: getCategoryColor(category.id) }]} />
                 <Text style={styles.categoryName}>{category.name} ({categoryCounts[category.id] || 0})</Text>
               </TouchableOpacity>
-            ))}
+            )) : <Text style={styles.emptyText}>No hay categorías</Text>}
           </ScrollView>
         </View>
         
@@ -377,7 +396,7 @@ const goToNewSale = () => {
             </TouchableOpacity>
           </View>
           
-          {recentSales.length > 0 ? (
+          {recentSales && recentSales.length > 0 ? (
             recentSales.map(sale => (
               <View key={sale.id} style={styles.saleItem}>
                 <View style={styles.saleInfo}>
@@ -411,7 +430,7 @@ const goToNewSale = () => {
             </TouchableOpacity>
           </View>
           
-          {lowStockProducts.length > 0 ? (
+          {lowStockProducts && lowStockProducts.length > 0 ? (
             lowStockProducts.map(product => (
               <TouchableOpacity 
                 key={product.id} 
