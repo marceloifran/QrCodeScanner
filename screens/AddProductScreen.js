@@ -36,7 +36,7 @@ import {
   getCategoriesForIndustry,
   getCustomFieldsForIndustry,
 } from "../utils/categoryUtils";
-import { verifyProductLimit } from "../utils/subscriptionUtils";
+import { verifyProductLimit, checkProductLimit } from "../utils/subscriptionUtils";
 
 export default function AddProductScreen({ navigation }) {
   const [barcode, setBarcode] = useState("");
@@ -213,15 +213,34 @@ export default function AddProductScreen({ navigation }) {
   useEffect(() => {
     const loadProductLimit = async () => {
       try {
-        const limit = await verifyProductLimit(auth.currentUser.uid);
-        setProductLimit(limit);
+        if (auth.currentUser) {
+          const userId = auth.currentUser.uid;
+          // Obtener el resultado completo del checkProductLimit
+          const result = await checkProductLimit(userId);
+          setProductLimit(result);
+          
+          // Si no puede añadir más productos, mostrar alerta
+          if (!result.canAdd) {
+            Alert.alert(
+              "Límite de productos alcanzado",
+              result.message,
+              [
+                { 
+                  text: "Actualizar plan", 
+                  onPress: () => navigation.navigate("SubscriptionPlans") 
+                },
+                { text: "Entendido", style: "cancel" }
+              ]
+            );
+          }
+        }
       } catch (error) {
         console.error("Error al cargar límite de productos:", error);
       }
     };
 
     loadProductLimit();
-  }, []);
+  }, [navigation]);
 
   // Función para aplicar porcentaje al precio
   const applyPercentage = (percentage) => {

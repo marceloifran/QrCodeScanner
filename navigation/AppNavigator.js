@@ -27,6 +27,7 @@ import SalesHistoryScreen from "../screens/SalesHistoryScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import NotificationsScreen from "../screens/NotificationsScreen";
 import RegisterScreen from "../screens/RegisterScreen";
+import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import BusinessSettingsScreen from "../screens/BusinessSettingsScreen";
 import TabNavigator from "./TabNavigator"; // Asegurate de que el path sea correcto
 import NewCartScreen from "../screens/NewCartScreen";
@@ -34,6 +35,7 @@ import NewCartScreen from "../screens/NewCartScreen";
 import SubscriptionPlansScreen from "../screens/SubscriptionPlansScreen";
 import PaymentScreen from "../screens/PaymentScreen";
 import SubscriptionInfoScreen from "../screens/SubscriptionInfoScreen";
+import DirectUpgradeScreen from "../screens/DirectUpgradeScreen";
 // Importar pantalla de configuración de pruebas
 import TestingConfigScreen from "../screens/TestingConfigScreen";
 
@@ -102,6 +104,10 @@ const AppNavigator = () => {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
+          headerBackTitle: ' ', // Espacio en blanco para iOS
+          headerBackTitleVisible: false, // Ocultar texto en iOS
+          headerTruncatedBackTitle: '', // Texto truncado en iOS
+          headerBackLabelVisible: false, // Para versiones más recientes de React Navigation
         }}
       >
         {user ? (
@@ -117,6 +123,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             <Stack.Screen 
@@ -129,6 +137,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             <Stack.Screen 
@@ -141,6 +151,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             <Stack.Screen 
@@ -153,6 +165,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             <Stack.Screen
@@ -165,6 +179,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             <Stack.Screen
@@ -177,6 +193,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             <Stack.Screen
@@ -189,6 +207,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             <Stack.Screen
@@ -196,11 +216,20 @@ const AppNavigator = () => {
               component={SubscriptionInfoScreen}
               options={{
                 headerShown: true,
-                title: "Información de Suscripción",
+                title: "Mi Suscripción",
                 headerStyle: {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
+              }}
+            />
+            <Stack.Screen
+              name="DirectUpgrade"
+              component={DirectUpgradeScreen}
+              options={{
+                headerShown: false,
               }}
             />
             <Stack.Screen
@@ -213,6 +242,8 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
+                headerBackTitle: ' ',
+                headerBackTitleVisible: false,
               }}
             />
             {__DEV__ && (
@@ -226,6 +257,8 @@ const AppNavigator = () => {
                     backgroundColor: colors.primary,
                   },
                   headerTintColor: "#fff",
+                  headerBackTitle: ' ',
+                  headerBackTitleVisible: false,
                 }}
               />
             )}
@@ -233,6 +266,7 @@ const AppNavigator = () => {
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
           </>
         )}

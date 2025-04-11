@@ -15,7 +15,16 @@ export const checkProductLimit = async (userId) => {
     }
     
     const userData = userDoc.data();
-    const planId = userData.subscriptionPlan || 'base';
+    let planId = 'base';
+    
+    // Verificar si el usuario tiene una suscripción activa
+    if (userData.subscription && userData.subscription.status === 'active') {
+      planId = userData.subscription.planId;
+    } else if (userData.subscriptionPlan) {
+      // Para compatibilidad con versiones anteriores
+      planId = userData.subscriptionPlan;
+    }
+    
     const plan = getPlanById(planId);
     
     // Contar cuántos productos tiene el usuario
@@ -73,13 +82,16 @@ export const showLimitAlert = (result, navigation) => {
 };
 
 // Función para verificar el límite antes de agregar un producto
-export const verifyProductLimit = async (navigation) => {
+export const verifyProductLimit = async (userId) => {
   try {
-    const userId = auth.currentUser?.uid;
+    if (!userId) {
+      userId = auth.currentUser?.uid;
+    }
+    
     if (!userId) return false;
     
     const result = await checkProductLimit(userId);
-    return !showLimitAlert(result, navigation);
+    return result.canAdd;
   } catch (error) {
     console.error('Error en verificación de límite:', error);
     return true; // En caso de error, permitimos continuar

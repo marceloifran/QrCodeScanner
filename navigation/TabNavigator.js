@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 
@@ -19,34 +19,55 @@ const Stack = createStackNavigator();
 
 export default function TabNavigator() {
   const [notificationCount, setNotificationCount] = useState(0);
+  const [businessName, setBusinessName] = useState('Mi Negocio');
 
   useEffect(() => {
+    const loadBusinessName = async () => {
+      try {
+        if (auth.currentUser) {
+          const userDocRef = doc(db, 'businessInfo', auth.currentUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (userData && userData.name) {
+              setBusinessName(userData.name);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error al cargar el nombre del negocio:', error);
+      }
+    };
+    
+    loadBusinessName();
+    
+    const checkNotifications = async () => {
+      if (!auth.currentUser) return;
+      try {
+        const q = query(
+          collection(db, 'products'),
+          where('userId', '==', auth.currentUser.uid)
+        );
+        const querySnapshot = await getDocs(q);
+        const productsList = querySnapshot.docs.map(doc => doc.data());
+
+        // Contar productos con stock bajo
+        const lowStockCount = productsList.filter(product => {
+          const threshold = product.lowStockThreshold || 5;
+          return product.stock <= threshold;
+        }).length;
+
+        setNotificationCount(lowStockCount);
+      } catch (error) {
+        console.error('Error verificando notificaciones:', error);
+      }
+    };
+
     checkNotifications();
     const interval = setInterval(checkNotifications, 60000); // Cada minuto
     return () => clearInterval(interval);
   }, []);
-
-  const checkNotifications = async () => {
-    if (!auth.currentUser) return;
-    try {
-      const q = query(
-        collection(db, 'products'),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const querySnapshot = await getDocs(q);
-      const productsList = querySnapshot.docs.map(doc => doc.data());
-
-      // Contar productos con stock bajo
-      const lowStockCount = productsList.filter(product => {
-        const threshold = product.lowStockThreshold || 5;
-        return product.stock <= threshold;
-      }).length;
-
-      setNotificationCount(lowStockCount);
-    } catch (error) {
-      console.error('Error verificando notificaciones:', error);
-    }
-  };
 
   return (
     <Tab.Navigator
@@ -106,7 +127,7 @@ export default function TabNavigator() {
         component={DashboardScreen} 
         options={{ 
           title: 'Inicio',
-          headerTitle: 'Mi Negocio'
+          headerTitle: businessName
         }} 
       />
       <Tab.Screen 

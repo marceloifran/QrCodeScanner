@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Kiosko App",
-    "slug": "kiosko-app",
+    "name": "Ifsin Negocios",
+    "slug": "ifsin-negocios",
     "version": "1.0.0",
     "plugins": [
       [
@@ -31,7 +31,19 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.marceloifran.kioskoapp",
-      "buildNumber": "1.0.0"
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": ["qrcodescanner", "com.marceloifran.kioskoapp"],
+            "CFBundleTypeRole": "Editor"
+          }
+        ],
+        "LSApplicationQueriesSchemes": ["mercadopago"],
+        "NSCameraUsageDescription": "Esta aplicación necesita acceso a la cámara para escanear códigos QR y códigos de barras.",
+        "UIBackgroundModes": ["remote-notification"]
+      },
+      "associatedDomains": ["applinks:qrcodescanner.app.link"]
     },
     "android": {
       "adaptiveIcon": {
@@ -39,17 +51,42 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.marceloifran.kioskoapp",
+      "versionCode": 1,
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA",
         "RECEIVE_BOOT_COMPLETED",
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "qrcodescanner"
+            },
+            {
+              "scheme": "com.marceloifran.kioskoapp"
+            },
+            {
+              "scheme": "https",
+              "host": "*.qrcodescanner.app.link"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ],
+      "config": {
+        "googleMobileAdsAppId": "ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "scheme": "qrcodescanner",
     "sdkVersion": "52.0.0",
     "newArchEnabled": true,
     "extra": {
@@ -57,6 +94,15 @@
         "projectId": "c418f4af-b5b3-476e-97b8-3d17c2637b79"
       }
     },
-    "owner": "marceloifran"
+    "owner": "marceloifran",
+    "description": "Aplicación para gestión de inventario y ventas con lector de códigos QR y códigos de barras. Ideal para pequeños negocios y kioscos.",
+    "primaryColor": "#3498db",
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/c418f4af-b5b3-476e-97b8-3d17c2637b79"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }

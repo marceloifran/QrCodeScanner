@@ -21,9 +21,27 @@
         "prebuildCommand": "cp -f ./android/patches/expo-modules-core-build.gradle ./node_modules/expo-modules-core/android/build.gradle"
       }
     },
-    "production": {}
+    "production": {
+      "android": {
+        "buildType": "app-bundle",
+        "image": "latest",
+        "gradleCommand": ":app:bundleRelease",
+        "env": {
+          "KOTLIN_COMPILER_ARGS": "-Xskip-prerelease-check -Xsuppress-version-warnings",
+          "KOTLIN_COMPILER_EXECUTION_STRATEGY": "in-process",
+          "KOTLIN_INCREMENTAL": "false"
+        }
+      },
+      "autoIncrement": true
+    }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
+        "track": "production",
+        "releaseStatus": "completed"
+      }
+    }
   }
-} 
+}

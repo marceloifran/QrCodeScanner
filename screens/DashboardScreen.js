@@ -295,7 +295,7 @@ const goToNewSale = () => {
   
   return (
     <SafeAreaView style={styles.container}>
-    <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -307,9 +307,8 @@ const goToNewSale = () => {
           />
         }
       >
-        {/* Tarjetas de estadísticas */}
+        {/* Tarjetas de estadísticas principales */}
         <View style={styles.statsContainer}>
-
           <TouchableOpacity style={styles.statCard} onPress={viewInventoryValue}>
             <View style={[styles.iconCircle, { backgroundColor: '#e8f5e9' }]}>
               <Ionicons name="cube-outline" size={24} color="#28a745" />
@@ -336,10 +335,8 @@ const goToNewSale = () => {
         </View>
         
         {/* Tarjetas de valor de inventario e ingresos totales */}
-      
-        {/* Tarjetas de valor de inventario e ingresos totales */}
-        <View style={styles.valueContainer}>
-          <TouchableOpacity style={styles.valueCard} onPress={viewAllSales}>
+        <View style={styles.valueCardsContainer}>
+          <TouchableOpacity style={styles.valueCard} onPress={viewInventoryValue}>
             <View style={styles.valueTextContainer}>
               <Text style={styles.valueLabel}>Valor de Inventario</Text>
               <Text style={styles.valueNumber}>{formatPrice(stats.inventoryValue)}</Text>
@@ -361,9 +358,11 @@ const goToNewSale = () => {
         </View>
         
         {/* Sección de categorías */}
-        <View style={styles.categoriesSection}>
+        <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Categorías</Text>
+            <View style={styles.sectionTitleContainer}>
+              <Text style={styles.sectionTitle}>Categorías</Text>
+            </View>
             <TouchableOpacity onPress={() => navigation.navigate('ProductList')}>
               <Text style={styles.seeAllText}>Ver todas</Text>
             </TouchableOpacity>
@@ -373,6 +372,7 @@ const goToNewSale = () => {
             horizontal 
             showsHorizontalScrollIndicator={false}
             style={styles.categoriesContainer}
+            contentContainerStyle={styles.categoriesContentContainer}
           >
             {categories && categories.length > 0 ? categories.slice(0, 6).map((category) => (
               <TouchableOpacity
@@ -380,25 +380,32 @@ const goToNewSale = () => {
                 style={styles.categoryCard}
                 onPress={() => navigateToCategory(category.id)}
               >
-                <View style={[styles.categoryColorIndicator, { backgroundColor: getCategoryColor(category.id) }]} />
-                <Text style={styles.categoryName}>{category.name} ({categoryCounts[category.id] || 0})</Text>
+                <Text style={styles.categoryName}>{category.name}</Text>
+                <Text style={styles.categoryCount}>{categoryCounts[category.id] || 0}</Text>
               </TouchableOpacity>
             )) : <Text style={styles.emptyText}>No hay categorías</Text>}
           </ScrollView>
         </View>
         
         {/* Sección de ventas recientes */}
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Ventas Recientes</Text>
+            <View style={styles.sectionTitleContainer}>
+              <Ionicons name="cart-outline" size={20} color={colors.primary} style={styles.sectionIcon} />
+              <Text style={styles.sectionTitle}>Ventas Recientes</Text>
+            </View>
             <TouchableOpacity onPress={viewAllSales}>
-              <Text style={styles.viewAllText}>Ver todas</Text>
+              <Text style={styles.seeAllText}>Ver todas</Text>
             </TouchableOpacity>
           </View>
           
           {recentSales && recentSales.length > 0 ? (
             recentSales.map(sale => (
-              <View key={sale.id} style={styles.saleItem}>
+              <TouchableOpacity 
+                key={sale.id} 
+                style={styles.saleItem}
+                onPress={() => navigation.navigate('SaleDetail', { saleId: sale.id })}
+              >
                 <View style={styles.saleInfo}>
                   <Text style={styles.saleDate}>
                     {sale.date.toLocaleDateString('es-AR', { 
@@ -413,20 +420,29 @@ const goToNewSale = () => {
                     {sale.items?.length || 0} productos
                   </Text>
                 </View>
-                <Text style={styles.saleTotal}>{formatPrice(sale.total || 0)}</Text>
-              </View>
+                <View style={styles.saleTotalContainer}>
+                  <Text style={styles.saleTotal}>{formatPrice(sale.total || 0)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.text.secondary} />
+                </View>
+              </TouchableOpacity>
             ))
           ) : (
-            <Text style={styles.emptyText}>No hay ventas recientes</Text>
+            <View style={styles.emptyContainer}>
+              <Ionicons name="cart-outline" size={40} color="#e0e0e0" />
+              <Text style={styles.emptyText}>No hay ventas recientes</Text>
+            </View>
           )}
         </View>
 
         {/* Sección de productos con stock bajo */}
-        <View style={styles.section}>
+        <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Productos con Stock Bajo</Text>
+            <View style={styles.sectionTitleContainer}>
+              <Ionicons name="alert-circle-outline" size={20} color={colors.primary} style={styles.sectionIcon} />
+              <Text style={styles.sectionTitle}>Productos con Stock Bajo</Text>
+            </View>
             <TouchableOpacity onPress={viewLowStockProducts}>
-              <Text style={styles.viewAllText}>Ver todas</Text>
+              <Text style={styles.seeAllText}>Ver todos</Text>
             </TouchableOpacity>
           </View>
           
@@ -439,35 +455,40 @@ const goToNewSale = () => {
               >
                 <View style={styles.lowStockInfo}>
                   <Text style={styles.lowStockName}>{product.name}</Text>
-                  <Text style={styles.lowStockStock}>Stock: {product.stock}</Text>
+                  <View style={styles.stockIndicatorContainer}>
+                    <View style={[styles.stockIndicator, { backgroundColor: '#ffebee' }]} />
+                    <Text style={styles.lowStockStock}>Stock: {product.stock}</Text>
+                  </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.text.secondary} />
               </TouchableOpacity>
             ))
           ) : (
-            <Text style={styles.emptyText}>No hay productos con stock bajo</Text>
+            <View style={styles.emptyContainer}>
+              <Ionicons name="checkmark-circle-outline" size={40} color="#e0e0e0" />
+              <Text style={styles.emptyText}>No hay productos con stock bajo</Text>
+            </View>
           )}
         </View>
       </ScrollView>
       
       <View style={styles.floatingButtonsContainer}>
-  <TouchableOpacity 
-    style={[styles.floatingButton, styles.newSaleButton]}
-    onPress={goToNewSale}
-  >
-    <Ionicons name="cart-outline" size={24} color="white" />
-    <Text style={styles.floatingButtonText}>Nueva Venta</Text>
-  </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.floatingButton, styles.newSaleButton]}
+          onPress={goToNewSale}
+        >
+          <Ionicons name="cart-outline" size={24} color="white" />
+          <Text style={styles.floatingButtonText}>Nueva Venta</Text>
+        </TouchableOpacity>
 
-  <TouchableOpacity 
-    style={[styles.floatingButton, styles.scanStockButton]}
-    onPress={goToScanStock}
-  >
-    <Ionicons name="barcode-outline" size={24} color="white" />
-    <Text style={styles.floatingButtonText}>Escanear Stock</Text>
-  </TouchableOpacity>
-</View>
-
+        <TouchableOpacity 
+          style={[styles.floatingButton, styles.scanStockButton]}
+          onPress={goToScanStock}
+        >
+          <Ionicons name="barcode-outline" size={24} color="white" />
+          <Text style={styles.floatingButtonText}>Escanear Stock</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -475,25 +496,26 @@ const goToNewSale = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#f5f7fa',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: '#f5f7fa',
   },
   loadingText: {
     marginTop: 10,
     color: colors.text.secondary,
+    fontSize: 14,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 20, // Espacio para los botones flotantes
+    paddingTop: 16,
+    paddingBottom: 100, // Espacio para los botones flotantes
   },
   statsContainer: {
     flexDirection: 'row',
@@ -503,49 +525,49 @@ const styles = StyleSheet.create({
   statCard: {
     width: '31%',
     backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 16,
+    padding: 16,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colors.text.primary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.text.secondary,
     textAlign: 'center',
   },
-  valueContainer: {
+  valueCardsContainer: {
     flexDirection: 'column',
     marginBottom: 16,
+    gap: 12,
   },
   valueCard: {
     flexDirection: 'row',
     backgroundColor: 'white',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 10,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 3,
     alignItems: 'center',
     justifyContent: 'space-between',
   },
@@ -555,198 +577,127 @@ const styles = StyleSheet.create({
   valueLabel: {
     fontSize: 14,
     color: colors.text.secondary,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   valueNumber: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.text.primary,
   },
   valueIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,
   },
-  section: {
+  sectionCard: {
     backgroundColor: 'white',
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  sectionTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionIcon: {
+    marginRight: 8,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: colors.text.primary,
-  },
-  viewAllText: {
-    color: colors.primary,
-    fontWeight: '500',
-  },
-  categoriesSection: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
   },
   seeAllText: {
     color: colors.primary,
     fontWeight: '500',
+    fontSize: 14,
   },
   categoriesContainer: {
-    flexDirection: 'row',
+    marginTop: 8,
     marginBottom: 8,
+  },
+  categoriesContentContainer: {
+    paddingRight: 8,
+    paddingBottom: 8,
   },
   categoryCard: {
-    backgroundColor: 'white',
-    borderRadius: 10,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
     padding: 12,
-    marginRight: 10,
-    minWidth: 100,
-    alignItems: 'center',
+    marginRight: 12,
+    marginBottom: 8,
+    minWidth: 110,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 2,
-  },
-  categoryColorIndicator: {
-    width: 30,
-    height: 5,
-    borderRadius: 3,
-    marginBottom: 8,
+    elevation: 1,
   },
   categoryName: {
     fontSize: 14,
     fontWeight: '500',
     color: colors.text.primary,
-    textAlign: 'center',
     marginBottom: 4,
   },
   categoryCount: {
     fontSize: 12,
     color: colors.text.secondary,
-    textAlign: 'center',
   },
   saleItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
-    paddingVertical: 10,
   },
   saleInfo: {
     flex: 1,
   },
   saleDate: {
     fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 5,
+    color: colors.text.primary,
+    marginBottom: 4,
+    fontWeight: '500',
   },
   saleItems: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.text.secondary,
+  },
+  saleTotalContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   saleTotal: {
     fontSize: 16,
     fontWeight: 'bold',
     color: colors.primary,
+    marginRight: 8,
+  },
+  emptyContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
   },
   emptyText: {
     textAlign: 'center',
-    color: colors.text.tertiary,
-    padding: 10,
-  },
-  floatingButton: {
-    position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 30,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  floatingButtonsContainer: {
-    position: 'absolute',
-    bottom: 10,
-    right: 20,
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    zIndex: 10
-  },  
-  newSaleButton: {
-    bottom: 80,
-    right: 20,
-    backgroundColor: colors.primary,
-  },
-  scanStockButton: {
-    bottom: 20,
-    right: 20,
-    backgroundColor: colors.accent,
-  },
-  floatingButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    width: '100%',
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text.primary
-  },
-  notificationBell: {
-    padding: 8,
-    position: 'relative'
-  },
-  badgeContainer: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: colors.error,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  badgeText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold'
+    color: colors.text.secondary,
+    marginTop: 12,
+    fontSize: 14,
   },
   lowStockItem: {
     flexDirection: 'row',
@@ -754,18 +705,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   lowStockInfo: {
     flex: 1,
   },
   lowStockName: {
     fontSize: 14,
+    fontWeight: '500',
     color: colors.text.primary,
-    marginBottom: 5,
+    marginBottom: 6,
+  },
+  stockIndicatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stockIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
   },
   lowStockStock: {
-    fontSize: 12,
-    color: colors.text.secondary,
+    fontSize: 13,
+    color: '#f44336',
+  },
+  floatingButtonsContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  floatingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  newSaleButton: {
+    backgroundColor: colors.primary,
+  },
+  scanStockButton: {
+    backgroundColor: '#2196f3',
+  },
+  floatingButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 });

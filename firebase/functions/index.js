@@ -2,10 +2,13 @@ const functions = require("firebase-functions");
 const cors = require("cors")({ origin: true });
 const mercadopago = require("mercadopago");
 
+// Cargar variables de entorno
+require('dotenv').config();
+
 // Configurar Mercado Pago con el access token
 // IMPORTANTE: En producción, este token debe estar en variables de entorno
 mercadopago.configure({
-  access_token: "TEST-5274144528332475-040910-f2f8e0c9db4a8a8a3a9bd0702a234567-1234567" // Reemplazar con tu access token
+  access_token: process.env.MERCADOPAGO_ACCESS_TOKEN || "TEST-5274144528332475-040910-f2f8e0c9db4a8a8a3a9bd0702a234567-1234567"
 });
 
 // Función para crear una preferencia de pago

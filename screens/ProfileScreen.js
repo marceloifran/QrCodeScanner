@@ -147,6 +147,30 @@ export default function ProfileScreen({ navigation, route }) {
         {renderSubscriptionInfo()}
         
         <View style={styles.optionsContainer}>
+          {/* Sección de Configuración del Negocio */}
+          <TouchableOpacity 
+            style={styles.option}
+            onPress={() => navigation.navigate('BusinessSettings')}
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#e8f5e9' }]}>
+              <Ionicons name="business-outline" size={24} color={colors.primary} />
+            </View>
+            <Text style={styles.optionText}>Configuración del Negocio</Text>
+            <Ionicons name="chevron-forward" size={24} color="#ccc" />
+          </TouchableOpacity>
+
+          {/* Actualización directa a Premium (solo para desarrollo) */}
+          <TouchableOpacity 
+            style={styles.option}
+            onPress={() => navigation.navigate('DirectUpgrade')}
+          >
+            <View style={[styles.iconContainer, { backgroundColor: '#e3f2fd' }]}>
+              <Ionicons name="star-outline" size={24} color="#1976d2" />
+            </View>
+            <Text style={styles.optionText}>Activar Premium</Text>
+            <Ionicons name="chevron-forward" size={24} color="#ccc" />
+          </TouchableOpacity>
+          
           {/* Sección de Cerrar Sesión */}
           <TouchableOpacity
             style={[styles.optionItem, styles.signOutOption]}
@@ -160,17 +184,6 @@ export default function ProfileScreen({ navigation, route }) {
             </View>
           </TouchableOpacity>
 
-          {/* Sección de Configuración del Negocio */}
-          <TouchableOpacity 
-            style={styles.option}
-            onPress={() => navigation.navigate('BusinessSettings')}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: '#e8f5e9' }]}>
-              <Ionicons name="business-outline" size={24} color={colors.primary} />
-            </View>
-            <Text style={styles.optionText}>Configuración del Negocio</Text>
-            <Ionicons name="chevron-forward" size={24} color="#ccc" />
-          </TouchableOpacity>
         </View>
       </View>
     </View>

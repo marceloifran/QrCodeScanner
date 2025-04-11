@@ -8,7 +8,8 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
-  Modal
+  Modal,
+  Keyboard
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { collection, query, where, getDocs, doc, getDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -297,7 +298,13 @@ export default function ScanProductScreen({ navigation, route }) {
         product.name.toLowerCase().includes(searchText.toLowerCase()) ||
         product.barcode.includes(searchText)
       );
+      
       setSearchResults(filtered);
+      
+      // Cerrar el teclado automáticamente cuando hay resultados
+      if (filtered.length > 0) {
+        Keyboard.dismiss();
+      }
     } catch (error) {
       console.error('Error al buscar productos:', error);
       Alert.alert('Error', 'No se pudo buscar productos');
@@ -507,8 +514,6 @@ export default function ScanProductScreen({ navigation, route }) {
                   }
                 }}
                 autoFocus={true}
-                returnKeyType="search"
-                onSubmitEditing={() => searchProducts(searchQuery)}
               />
               {searchQuery !== '' && (
                 <TouchableOpacity 
@@ -529,44 +534,85 @@ export default function ScanProductScreen({ navigation, route }) {
               <FlatList
                 data={searchResults}
                 keyExtractor={item => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity 
-                    style={styles.searchResultItem}
-                    onPress={() => {
-                      // Verificar stock
-                      if (item.stock <= 0) {
-                        return;
-                      }
-                      // Si existe en el carrito, +1
-                      const existingItemIndex = cart.findIndex(cartItem => cartItem.id === item.id);
-                      if (existingItemIndex !== -1) {
-                        const updatedCart = [...cart];
-                        const newQuantity = updatedCart[existingItemIndex].quantity + 1;
-                        if (newQuantity > item.stock) {
-                          return;
+                renderItem={({ item }) => {
+                  // Verificar si el producto ya está en el carrito
+                  const existingItemIndex = cart.findIndex(cartItem => cartItem.id === item.id);
+                  const currentQuantity = existingItemIndex !== -1 ? cart[existingItemIndex].quantity : 0;
+                  const canAdd = item.stock > currentQuantity;
+                  
+                  return (
+                    <TouchableOpacity 
+                      style={[
+                        styles.searchResultItem, 
+                        !canAdd && styles.disabledSearchItem
+                      ]}
+                      disabled={!canAdd}
+                      onPress={() => {
+                        // Agregar directamente al carrito sin cerrar el modal
+                        if (existingItemIndex !== -1) {
+                          const updatedCart = [...cart];
+                          updatedCart[existingItemIndex].quantity += 1;
+                          setCart(updatedCart);
+                        } else {
+                          setCart([...cart, {
+                            id: item.id,
+                            barcode: item.barcode,
+                            name: item.name,
+                            price: item.price,
+                            quantity: 1,
+                            stock: item.stock
+                          }]);
                         }
-                        updatedCart[existingItemIndex].quantity = newQuantity;
-                        setCart(updatedCart);
-                      } else {
-                        setCart([...cart, {
-                          id: item.id,
-                          barcode: item.barcode,
-                          name: item.name,
-                          price: item.price,
-                          quantity: 1,
-                          stock: item.stock
-                        }]);
-                      }
-                      setSearchModalVisible(false);
-                      setSearchQuery('');
-                      setSearchResults([]);
-                    }}
-                  >
-                    <Text style={styles.searchResultName}>{item.name}</Text>
-                    <Text style={styles.searchResultPrice}>Precio: $ {formatMoney(item.price)}</Text>
-                    <Text style={styles.searchResultStock}>Stock: {item.stock}</Text>
-                  </TouchableOpacity>
-                )}
+                        
+                        // Mostrar confirmación visual
+                        Alert.alert(
+                          'Producto agregado',
+                          `${item.name} agregado al carrito`,
+                          [
+                            {
+                              text: 'Seguir comprando',
+                              onPress: () => {}, // No hacer nada, mantener el modal abierto
+                              style: 'cancel'
+                            },
+                            {
+                              text: 'Ver carrito',
+                              onPress: () => {
+                                setSearchModalVisible(false);
+                                setSearchQuery('');
+                                setSearchResults([]);
+                                setScanning(false); // Mostrar vista de carrito
+                              }
+                            }
+                          ],
+                          { cancelable: true }
+                        );
+                      }}
+                    >
+                      <View style={styles.searchResultContent}>
+                        <View style={styles.searchResultInfo}>
+                          <Text style={styles.searchResultName}>{item.name}</Text>
+                          <Text style={styles.searchResultPrice}>Precio: $ {formatMoney(item.price)}</Text>
+                          <Text style={[
+                            styles.searchResultStock,
+                            item.stock < 5 ? styles.lowStockText : null
+                          ]}>
+                            Stock: {item.stock}
+                          </Text>
+                        </View>
+                        
+                        {canAdd && (
+                          <View style={styles.addButtonContainer}>
+                            <Ionicons name="add-circle" size={28} color="#28a745" />
+                          </View>
+                        )}
+                        
+                        {!canAdd && (
+                          <Text style={styles.outOfStockText}>Sin stock</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
                 ListEmptyComponent={
                   searchQuery.length > 2 ? (
                     <Text style={styles.noResultsText}>No se encontraron productos</Text>
@@ -578,12 +624,34 @@ export default function ScanProductScreen({ navigation, route }) {
               />
             )}
             
-            <TouchableOpacity
-              style={styles.closeModalButton}
-              onPress={() => setSearchModalVisible(false)}
-            >
-              <Text style={styles.closeModalButtonText}>Cerrar</Text>
-            </TouchableOpacity>
+            <View style={styles.modalButtonsContainer}>
+              <TouchableOpacity
+                style={styles.closeModalButton}
+                onPress={() => {
+                  setSearchModalVisible(false);
+                  setSearchQuery('');
+                  setSearchResults([]);
+                }}
+              >
+                <Text style={styles.closeModalButtonText}>Cerrar</Text>
+              </TouchableOpacity>
+              
+              {cart.length > 0 && (
+                <TouchableOpacity
+                  style={styles.viewCartModalButton}
+                  onPress={() => {
+                    setSearchModalVisible(false);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setScanning(false); // Mostrar vista de carrito
+                  }}
+                >
+                  <Text style={styles.viewCartModalButtonText}>
+                    Ver Carrito ({cart.length})
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
       </Modal>
@@ -838,37 +906,69 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   searchResultItem: {
-    padding: 10,
+    padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
+    borderBottomColor: '#eee',
+  },
+  disabledSearchItem: {
+    opacity: 0.6,
+    backgroundColor: '#f5f5f5',
+  },
+  searchResultContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  searchResultInfo: {
+    flex: 1,
   },
   searchResultName: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 5,
+    color: '#333',
+    marginBottom: 4,
   },
   searchResultPrice: {
     fontSize: 14,
-    color: '#666',
+    color: '#28a745',
+    marginBottom: 2,
   },
   searchResultStock: {
     fontSize: 14,
     color: '#666',
   },
-  noResultsText: {
-    fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 20,
+  lowStockText: {
+    color: '#ff9800',
+  },
+  outOfStockText: {
+    color: '#dc3545',
+    fontWeight: 'bold',
+  },
+  addButtonContainer: {
+    padding: 5,
+  },
+  modalButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 15,
   },
   closeModalButton: {
     backgroundColor: '#dc3545',
     padding: 10,
     borderRadius: 5,
     alignItems: 'center',
-    marginTop: 20,
+    flex: 1,
+    marginRight: 5,
   },
-  closeModalButtonText: {
+  viewCartModalButton: {
+    backgroundColor: '#28a745',
+    padding: 10,
+    borderRadius: 5,
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 5,
+  },
+  viewCartModalButtonText: {
     color: 'white',
     fontWeight: 'bold',
   },
