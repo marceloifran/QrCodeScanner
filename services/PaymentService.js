@@ -161,101 +161,56 @@ export const updateUserPlan = async (userId, planId, expirationDate) => {
     console.log(`Actualizando plan: ${planId} para usuario: ${userId}`);
     
     if (!userId) {
-      console.error('ID de usuario no proporcionado');
       throw new Error('ID de usuario no proporcionado');
     }
     
-    // Verificar si el usuario existe
-    const userRef = doc(db, 'businessInfo', userId);
-    const userDoc = await getDoc(userRef);
-    
-    // Si el usuario no existe, crear un documento básico para él
-    if (!userDoc.exists()) {
-      console.log('No se encontró documento de usuario, creando uno nuevo');
-      
-      try {
-        // Obtener información básica del usuario desde auth
-        const user = auth.currentUser;
-        const userEmail = user ? user.email : 'usuario@ejemplo.com';
-        const userName = user ? (user.displayName || 'Usuario') : 'Usuario';
-        
-        // Crear un documento básico para el usuario
-        await setDoc(userRef, {
-          name: userName,
-          email: userEmail,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          industry: 'general', // Valor predeterminado
-        });
-        
-        console.log('Documento de usuario creado exitosamente');
-      } catch (createError) {
-        console.error('Error al crear documento de usuario:', createError);
-        // Continuar con la actualización del plan a pesar del error
-      }
+    // Verificar si el usuario ya tiene un plan activo
+    const currentStatus = await checkSubscriptionStatus(userId);
+    if (currentStatus.active && currentStatus.planId === planId) {
+      throw new Error('No puedes seleccionar el mismo plan que ya tienes activo');
     }
     
-    // Obtener detalles del plan
+    // Verificar si el plan existe
     const planDetails = SUBSCRIPTION_PLANS.find(plan => plan.id === planId);
     if (!planDetails) {
-      console.error('Plan no encontrado:', planId);
       throw new Error('Plan no encontrado');
     }
+    
+    // Calcular fecha de próximo pago (1 mes desde ahora)
+    const nextPaymentDate = new Date();
+    nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
     
     // Crear o actualizar la información de suscripción
     const subscriptionData = {
       planId,
       planName: planDetails.name,
       productLimit: planDetails.productLimit,
-      startDate: serverTimestamp(),
-      expirationDate: expirationDate || null, 
+      price: planDetails.price,
+      startDate: new Date(),
+      expirationDate: nextPaymentDate,
+      lastPayment: new Date(),
+      nextPaymentAmount: planDetails.price,
       status: 'active',
-      updatedAt: serverTimestamp()
+      updatedAt: new Date()
     };
     
-    console.log('Datos de suscripción a guardar:', JSON.stringify(subscriptionData));
-    
     // Actualizar en Firestore
+    const userRef = doc(db, 'users', userId);
     await updateDoc(userRef, {
-      subscription: {
-        planId: planId,
-        planName: planDetails.name,
-        productLimit: planDetails.productLimit,
-        startDate: serverTimestamp(),
-        expirationDate: expirationDate || null,
-        status: 'active',
-        updatedAt: serverTimestamp()
-      }
+      subscription: subscriptionData
     });
-    
-    // Verificar que se haya actualizado correctamente
-    const updatedDoc = await getDoc(userRef);
-    if (!updatedDoc.exists()) {
-      throw new Error('No se pudo verificar la actualización');
-    }
-    
-    const updatedData = updatedDoc.data();
-    console.log('Datos actualizados:', JSON.stringify(updatedData.subscription || {}));
     
     // Guardar localmente
-    await saveSubscriptionInfo({
-      ...subscriptionData,
-      userId
-    });
+    await saveSubscriptionInfo(subscriptionData);
     
-    console.log('Plan actualizado correctamente:', planId);
-    return true;
+    return {
+      success: true,
+      nextPaymentDate,
+      nextPaymentAmount: planDetails.price
+    };
   } catch (error) {
     console.error('Error al actualizar plan:', error);
-    
-    // Intentar mostrar un mensaje de error amigable
-    if (error.code === 'permission-denied') {
-      Alert.alert('Error', 'No tienes permisos para realizar esta acción. Por favor, inicia sesión nuevamente.');
-    } else {
-      Alert.alert('Error', 'No se pudo actualizar tu plan. Por favor, intenta nuevamente más tarde.');
-    }
-    
-    return false;
+    throw error;
   }
 };
 
@@ -266,9 +221,13 @@ export const updateUserPlan = async (userId, planId, expirationDate) => {
  */
 export const checkSubscriptionStatus = async (userId) => {
   try {
+    // Primero intentar obtener del almacenamiento local
+    const localSubscription = await getSubscriptionInfo();
+    
+    // Verificar en Firestore
     const userRef = doc(db, 'users', userId);
     const userDoc = await getDoc(userRef);
-
+    
     if (!userDoc.exists()) {
       return {
         active: false,
@@ -287,23 +246,33 @@ export const checkSubscriptionStatus = async (userId) => {
     }
 
     // Verificar si la suscripción ha expirado
-    const expirationDate = subscription.expirationDate.toDate();
+    const expirationDate = new Date(subscription.expirationDate);
     const now = new Date();
 
+    // Si ha expirado, actualizar el estado
     if (expirationDate < now) {
+      await updateDoc(userRef, {
+        'subscription.status': 'expired'
+      });
+
       return {
         active: false,
         message: 'Suscripción expirada',
         planId: subscription.planId,
-        expirationDate: expirationDate
+        expirationDate: expirationDate,
+        lastPayment: subscription.lastPayment,
+        nextPaymentAmount: subscription.price
       };
     }
 
     return {
       active: true,
       planId: subscription.planId,
+      planName: subscription.planName,
       expirationDate: expirationDate,
-      lastPayment: subscription.lastPayment
+      lastPayment: subscription.lastPayment,
+      nextPaymentAmount: subscription.price,
+      nextPaymentDate: expirationDate
     };
   } catch (error) {
     console.error('Error al verificar suscripción:', error);

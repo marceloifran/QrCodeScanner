@@ -5,7 +5,8 @@ import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { doc, getDoc } from 'firebase/firestore';
-import { checkSubscriptionStatus } from '../services/PaymentService';
+import { checkSubscriptionStatus, cancelSubscription } from '../services/PaymentService';
+import { getPlanById } from '../constants/plans';
 
 export default function ProfileScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
@@ -71,6 +72,45 @@ export default function ProfileScreen({ navigation, route }) {
     }
   };
 
+  const handleDisablePlan = async () => {
+    Alert.alert(
+      'Deshabilitar Plan',
+      '¿Estás seguro que deseas deshabilitar tu plan actual? Esta acción no se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Deshabilitar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const userId = auth.currentUser?.uid;
+              if (userId) {
+                await cancelSubscription(userId);
+                await loadUserSubscription(); // Recargar la información
+                Alert.alert('Éxito', 'Tu plan ha sido deshabilitado correctamente');
+              }
+            } catch (error) {
+              console.error('Error al deshabilitar plan:', error);
+              Alert.alert('Error', 'No se pudo deshabilitar el plan');
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const formatDate = (date) => {
+    if (!date) return 'No disponible';
+    return new Date(date).toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
   const renderSubscriptionInfo = () => {
     if (loading) {
       return (
@@ -81,52 +121,51 @@ export default function ProfileScreen({ navigation, route }) {
       );
     }
 
-    if (!subscriptionInfo) {
+    if (!subscriptionInfo || !subscriptionInfo.active) {
       return (
         <View style={styles.subscriptionContainer}>
           <Text style={styles.planName}>Plan Gratuito</Text>
           <Text style={styles.planDetails}>Plan básico con funcionalidades limitadas</Text>
+          <TouchableOpacity
+            style={styles.upgradeButton}
+            onPress={() => navigation.navigate('SubscriptionPlans')}
+          >
+            <Text style={styles.upgradeButtonText}>Actualizar Plan</Text>
+          </TouchableOpacity>
         </View>
       );
     }
 
-    const isPremium = subscriptionInfo.planId !== 'free';
-    const statusText = subscriptionInfo.status === 'active' ? 'Activo' : 'Inactivo';
-    const expirationDate = subscriptionInfo.expirationDate ? 
-      new Date(subscriptionInfo.expirationDate.seconds * 1000).toLocaleDateString() : 
-      'Sin fecha de expiración';
+    const plan = getPlanById(subscriptionInfo.planId);
+    const nextPaymentDate = formatDate(subscriptionInfo.expirationDate);
 
     return (
       <View style={styles.subscriptionContainer}>
-        <View style={styles.planHeader}>
-          <Text style={[styles.planName, isPremium && styles.premiumPlanName]}>
-            {subscriptionInfo.planName}
+        <Text style={styles.planName}>{plan.name}</Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.label}>Estado:</Text>
+          <Text style={[styles.value, { color: subscriptionInfo.active ? colors.success : colors.error }]}>
+            {subscriptionInfo.active ? 'Activo' : 'Inactivo'}
           </Text>
-          <View style={[styles.statusBadge, 
-            subscriptionInfo.status === 'active' ? styles.activeBadge : styles.inactiveBadge]}>
-            <Text style={styles.statusText}>{statusText}</Text>
-          </View>
         </View>
-        
-        {isPremium && (
-          <View style={styles.planDetailsContainer}>
-            <Text style={styles.planDetails}>
-              Límite de productos: {subscriptionInfo.productLimit === 'infinity' ? 'Ilimitado' : subscriptionInfo.productLimit}
-            </Text>
-            <Text style={styles.planDetails}>
-              Expira: {expirationDate}
-            </Text>
-          </View>
-        )}
-        
-        <TouchableOpacity 
-          style={styles.changePlanButton}
-          onPress={() => navigation.navigate('SubscriptionPlans')}
-        >
-          <Text style={styles.changePlanButtonText}>
-            {isPremium ? 'Cambiar plan' : 'Actualizar a premium'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.infoRow}>
+          <Text style={styles.label}>Próximo pago:</Text>
+          <Text style={styles.value}>{nextPaymentDate}</Text>
+        </View>
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity
+            style={[styles.button, styles.disableButton]}
+            onPress={handleDisablePlan}
+          >
+            <Text style={styles.buttonText}>Deshabilitar Plan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, styles.changeButton]}
+            onPress={() => navigation.navigate('SubscriptionPlans')}
+          >
+            <Text style={styles.buttonText}>Cambiar Plan</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -351,4 +390,46 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  label: {
+    fontSize: 16,
+    color: '#666'
+  },
+  value: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333'
+  },
+  buttonContainer: {
+    marginTop: 20,
+    gap: 10
+  },
+  button: {
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  disableButton: {
+    backgroundColor: colors.error
+  },
+  changeButton: {
+    backgroundColor: colors.primary
+  },
+  upgradeButton: {
+    backgroundColor: colors.primary,
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 15
+  },
+  upgradeButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500'
+  }
 });

@@ -11,92 +11,113 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth } from '../firebase/config';
-import { SUBSCRIPTION_PLANS } from '../constants/plans';
+import { SUBSCRIPTION_PLANS, getPlanById } from '../constants/plans';
 import { checkSubscriptionStatus } from '../services/PaymentService';
 import { colors } from '../theme/colors';
 
 export default function SubscriptionPlansScreen({ navigation, route }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [currentPlan, setCurrentPlan] = useState('base');
+  const [loading, setLoading] = useState(true);
+  const [currentPlanInfo, setCurrentPlanInfo] = useState(null);
   const [isUpgrade, setIsUpgrade] = useState(false);
 
   useEffect(() => {
-    // Verificar el plan actual del usuario
-    const checkCurrentPlan = async () => {
-      try {
-        setLoading(true);
-        const userId = auth.currentUser?.uid;
-        if (userId) {
-          const status = await checkSubscriptionStatus(userId);
-          setCurrentPlan(status.planId);
-          
-          // Si venimos de una pantalla que indica upgrade, marcamos como upgrade
-          if (route.params?.upgrade) {
-            setIsUpgrade(true);
-          }
-        }
-      } catch (error) {
-        console.error('Error al verificar plan actual:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkCurrentPlan();
+    loadCurrentPlan();
+    if (route.params?.upgrade) {
+      setIsUpgrade(true);
+    }
   }, [route.params]);
 
-  const handleSelectPlan = (plan) => {
-    setSelectedPlan(plan.id);
-  };
-
-  const handleContinue = async () => {
-    if (!selectedPlan) {
-      Alert.alert('Selecciona un plan', 'Por favor selecciona un plan para continuar');
-      return;
-    }
-
+  const loadCurrentPlan = async () => {
     try {
       setLoading(true);
       const userId = auth.currentUser?.uid;
-      
-      if (!userId) {
-        Alert.alert('Error', 'Debes iniciar sesión para continuar');
-        setLoading(false);
-        return;
+      if (userId) {
+        const status = await checkSubscriptionStatus(userId);
+        if (status.active) {
+          setCurrentPlanInfo({
+            planId: status.planId,
+            planName: status.planName,
+            nextPaymentDate: status.nextPaymentDate,
+            nextPaymentAmount: status.nextPaymentAmount
+          });
+        }
       }
-
-      const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
-      
-      // Navegar a la pantalla de pago con los detalles del plan seleccionado
-      navigation.navigate('Payment', {
-        planId: selectedPlan,
-        planName: plan.name,
-        price: plan.price,
-        userId
-      });
-      
     } catch (error) {
-      console.error('Error al procesar el plan:', error);
-      Alert.alert('Error', 'No se pudo procesar la selección del plan. Intente nuevamente.');
+      console.error('Error al cargar plan actual:', error);
+      Alert.alert('Error', 'No se pudo cargar la información de tu plan actual');
     } finally {
       setLoading(false);
     }
   };
 
-  const isPlanDisabled = (planId) => {
-    // Determinar si un plan debe estar deshabilitado
-    // Un plan está deshabilitado si es de menor nivel que el actual
-    const currentPlanIndex = SUBSCRIPTION_PLANS.findIndex(p => p.id === currentPlan);
-    const planIndex = SUBSCRIPTION_PLANS.findIndex(p => p.id === planId);
-    
-    return planIndex < currentPlanIndex;
+  const handleSelectPlan = (plan) => {
+    if (currentPlanInfo && plan.id === currentPlanInfo.planId) {
+      Alert.alert(
+        'Plan Actual',
+        'Este es tu plan actual. Selecciona un plan diferente si deseas cambiar.',
+        [{ text: 'Entendido' }]
+      );
+      return;
+    }
+    setSelectedPlan(plan.id);
+  };
+
+  const formatDate = (date) => {
+    if (!date) return 'No disponible';
+    return new Date(date).toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('es-AR', {
+      style: 'currency',
+      currency: 'ARS',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
+  };
+
+  const handleContinue = () => {
+    if (!selectedPlan) {
+      Alert.alert('Selecciona un plan', 'Por favor selecciona un plan para continuar');
+      return;
+    }
+
+    const plan = SUBSCRIPTION_PLANS.find(p => p.id === selectedPlan);
+    const nextPayment = new Date();
+    nextPayment.setMonth(nextPayment.getMonth() + 1);
+
+    Alert.alert(
+      'Confirmar cambio de plan',
+      `¿Deseas cambiar al ${plan.name}?\n\n` +
+      `Precio mensual: ${formatCurrency(plan.price)}\n` +
+      `Próximo pago: ${formatDate(nextPayment)}\n\n` +
+      `Tu plan actual será desactivado al confirmar el cambio.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Confirmar',
+          onPress: () => {
+            navigation.navigate('Payment', {
+              planId: selectedPlan,
+              planName: plan.name,
+              price: plan.price,
+              userId: auth.currentUser?.uid,
+              nextPaymentDate: nextPayment
+            });
+          }
+        }
+      ]
+    );
   };
 
   const renderPlanCard = (plan) => {
-    const isDisabled = isPlanDisabled(plan.id);
+    const isCurrentPlan = currentPlanInfo && currentPlanInfo.planId === plan.id;
     const isSelected = selectedPlan === plan.id;
-    const isCurrentPlan = currentPlan === plan.id;
     
     return (
       <TouchableOpacity
@@ -104,33 +125,57 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
         style={[
           styles.planCard,
           isSelected && styles.selectedPlanCard,
-          isDisabled && styles.disabledPlanCard,
-          { borderColor: plan.color }
+          isCurrentPlan && styles.currentPlanCard
         ]}
-        onPress={() => !isDisabled && handleSelectPlan(plan)}
-        disabled={isDisabled}
+        onPress={() => handleSelectPlan(plan)}
+        disabled={isCurrentPlan}
       >
-        {plan.recommended && (
+        {plan.recommended && !isCurrentPlan && (
           <View style={styles.recommendedBadge}>
             <Text style={styles.recommendedText}>Recomendado</Text>
           </View>
         )}
         
-        <Text style={[styles.planName, { color: plan.color }]}>{plan.name}</Text>
-        <Text style={styles.planPrice}>{plan.priceDisplay}<Text style={styles.perMonth}>/mes</Text></Text>
+        {isCurrentPlan && (
+          <View style={[styles.recommendedBadge, { backgroundColor: colors.success }]}>
+            <Text style={styles.recommendedText}>Plan Actual</Text>
+          </View>
+        )}
         
+        <Text style={[
+          styles.planName, 
+          { color: isCurrentPlan ? colors.success : plan.color }
+        ]}>
+          {plan.name}
+        </Text>
+        
+        <Text style={styles.planPrice}>
+          {formatCurrency(plan.price)}
+          <Text style={styles.perMonth}>/mes</Text>
+        </Text>
+
         <View style={styles.planFeatures}>
           {plan.features.map((feature, index) => (
             <View key={index} style={styles.featureItem}>
-              <Ionicons name="checkmark-circle" size={20} color={plan.color} style={styles.featureIcon} />
+              <Ionicons 
+                name="checkmark-circle" 
+                size={20} 
+                color={isCurrentPlan ? colors.success : plan.color} 
+                style={styles.featureIcon} 
+              />
               <Text style={styles.featureText}>{feature}</Text>
             </View>
           ))}
         </View>
-        
-        {isCurrentPlan && (
-          <View style={[styles.currentPlanBadge, { backgroundColor: plan.color }]}>
-            <Text style={styles.currentPlanText}>Plan Actual</Text>
+
+        {isCurrentPlan && currentPlanInfo?.nextPaymentDate && (
+          <View style={styles.currentPlanInfo}>
+            <Text style={styles.nextPaymentText}>
+              Próximo pago: {formatDate(currentPlanInfo.nextPaymentDate)}
+            </Text>
+            <Text style={styles.nextPaymentText}>
+              Monto: {formatCurrency(currentPlanInfo.nextPaymentAmount)}
+            </Text>
           </View>
         )}
       </TouchableOpacity>
@@ -141,7 +186,7 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Cargando planes...</Text>
+        <Text style={styles.loadingText}>Cargando planes disponibles...</Text>
       </View>
     );
   }
@@ -168,7 +213,7 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
             : 'Elige el plan que mejor se adapte a las necesidades de tu negocio.'}
         </Text>
         
-        {SUBSCRIPTION_PLANS.map(plan => renderPlanCard(plan))}
+        {SUBSCRIPTION_PLANS.map(renderPlanCard)}
         
         <View style={styles.infoContainer}>
           <Ionicons name="information-circle-outline" size={20} color="#666" />
@@ -257,8 +302,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 2.5,
   },
-  disabledPlanCard: {
-    opacity: 0.6,
+  currentPlanCard: {
+    borderColor: colors.success,
+    backgroundColor: '#f8fff8',
+    opacity: 0.9
   },
   recommendedBadge: {
     position: 'absolute',
@@ -304,17 +351,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
   },
-  currentPlanBadge: {
-    alignSelf: 'flex-start',
-    marginTop: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
+  currentPlanInfo: {
+    marginTop: 15,
+    padding: 10,
+    backgroundColor: '#e8f5e9',
+    borderRadius: 8
   },
-  currentPlanText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  nextPaymentText: {
+    fontSize: 14,
+    color: '#2e7d32',
+    marginBottom: 4
   },
   infoContainer: {
     flexDirection: 'row',
