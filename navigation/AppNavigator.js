@@ -35,7 +35,6 @@ import NewCartScreen from "../screens/NewCartScreen";
 import SubscriptionPlansScreen from "../screens/SubscriptionPlansScreen";
 import PaymentScreen from "../screens/PaymentScreen";
 import SubscriptionInfoScreen from "../screens/SubscriptionInfoScreen";
-import DirectUpgradeScreen from "../screens/DirectUpgradeScreen";
 // Importar pantalla de configuración de pruebas
 import TestingConfigScreen from "../screens/TestingConfigScreen";
 
@@ -223,13 +222,6 @@ const AppNavigator = () => {
                 headerTintColor: "#fff",
                 headerBackTitle: ' ',
                 headerBackTitleVisible: false,
-              }}
-            />
-            <Stack.Screen
-              name="DirectUpgrade"
-              component={DirectUpgradeScreen}
-              options={{
-                headerShown: false,
               }}
             />
             <Stack.Screen

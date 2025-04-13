@@ -1,34 +1,118 @@
 const functions = require("firebase-functions");
 const cors = require("cors")({ origin: true });
 const mercadopago = require("mercadopago");
+const admin = require('firebase-admin');
 
 // Cargar variables de entorno
 require('dotenv').config();
 
-// Configurar Mercado Pago con el access token
-// IMPORTANTE: En producción, este token debe estar en variables de entorno
+// Inicializar Firebase Admin
+admin.initializeApp();
+
+// Configurar Mercado Pago
 mercadopago.configure({
-  access_token: process.env.MERCADOPAGO_ACCESS_TOKEN || "TEST-5274144528332475-040910-f2f8e0c9db4a8a8a3a9bd0702a234567-1234567"
+  access_token: 'APP_USR-7878626425925742-041017-fad7c0a9f79d8558bdcceee2d9b3addf-721448179'
 });
 
-// Función para crear una preferencia de pago
+// Función para manejar webhooks de Mercado Pago
+exports.handleMercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
+  cors(req, res, async () => {
+    try {
+      const { type, data } = req.body;
+
+      if (type !== 'payment') {
+        return res.status(200).send('Notificación no procesada');
+      }
+
+      const paymentId = data.id;
+      
+      // Obtener información del pago
+      const payment = await mercadopago.payment.get(paymentId);
+      const paymentData = payment.body;
+      
+      // Obtener información del usuario desde external_reference
+      const userId = paymentData.external_reference;
+      if (!userId) {
+        throw new Error('No se encontró referencia al usuario');
+      }
+
+      // Actualizar el estado de la suscripción en Firestore
+      const userRef = admin.firestore().collection('users').doc(userId);
+      const userDoc = await userRef.get();
+
+      if (!userDoc.exists) {
+        throw new Error('Usuario no encontrado');
+      }
+
+      // Calcular fecha de expiración según el plan
+      const expirationDate = new Date();
+      const planId = paymentData.items[0].id;
+      
+      // Determinar la duración de la suscripción según el plan
+      switch (planId) {
+        case 'monthly':
+          expirationDate.setMonth(expirationDate.getMonth() + 1);
+          break;
+        case 'yearly':
+          expirationDate.setFullYear(expirationDate.getFullYear() + 1);
+          break;
+        default:
+          expirationDate.setMonth(expirationDate.getMonth() + 1);
+      }
+
+      // Actualizar el documento del usuario
+      await userRef.update({
+        subscription: {
+          status: paymentData.status,
+          planId: planId,
+          expirationDate: expirationDate,
+          lastPayment: {
+            id: paymentId,
+            amount: paymentData.transaction_amount,
+            date: new Date(),
+            status: paymentData.status,
+            paymentMethod: paymentData.payment_method_id
+          }
+        },
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Enviar notificación push al usuario
+      const userData = userDoc.data();
+      if (userData.fcmToken) {
+        const message = {
+          notification: {
+            title: 'Pago procesado',
+            body: `Tu pago ha sido ${paymentData.status === 'approved' ? 'aprobado' : 'rechazado'}`
+          },
+          token: userData.fcmToken
+        };
+
+        await admin.messaging().send(message);
+      }
+
+      res.status(200).send('OK');
+    } catch (error) {
+      console.error('Error en webhook:', error);
+      res.status(500).send('Error');
+    }
+  });
+});
+
+// Función para crear preferencia de pago
 exports.createPreference = functions.https.onRequest((req, res) => {
   cors(req, res, async () => {
     try {
-      // Verificar que sea una solicitud POST
       if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Método no permitido' });
       }
 
-      // Obtener datos del cuerpo de la solicitud
       const { planId, planName, price, userId, email } = req.body;
 
-      // Validar datos requeridos
       if (!planId || !planName || !price) {
         return res.status(400).json({ error: 'Faltan datos requeridos' });
       }
 
-      // Crear el objeto de preferencia según la documentación de Mercado Pago
       const preference = {
         items: [
           {
@@ -36,14 +120,14 @@ exports.createPreference = functions.https.onRequest((req, res) => {
             title: `Plan ${planName}`,
             description: `Suscripción al plan ${planName}`,
             quantity: 1,
-            currency_id: 'ARS', // Moneda Argentina, cambia según tu país
+            currency_id: 'ARS',
             unit_price: parseFloat(price)
           }
         ],
         payer: {
           email: email || 'usuario@test.com'
         },
-        external_reference: userId, // Referencia para identificar al usuario
+        external_reference: userId,
         back_urls: {
           success: "qrcodescanner://payment/success",
           failure: "qrcodescanner://payment/failure",
@@ -53,10 +137,8 @@ exports.createPreference = functions.https.onRequest((req, res) => {
         statement_descriptor: "QR CODE SCANNER"
       };
 
-      // Crear la preferencia en Mercado Pago
       const response = await mercadopago.preferences.create(preference);
       
-      // Devolver los datos necesarios al cliente
       res.json({
         id: response.body.id,
         init_point: response.body.init_point,

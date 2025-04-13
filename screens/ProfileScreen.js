@@ -158,18 +158,6 @@ export default function ProfileScreen({ navigation, route }) {
             <Text style={styles.optionText}>Configuración del Negocio</Text>
             <Ionicons name="chevron-forward" size={24} color="#ccc" />
           </TouchableOpacity>
-
-          {/* Actualización directa a Premium (solo para desarrollo) */}
-          <TouchableOpacity 
-            style={styles.option}
-            onPress={() => navigation.navigate('DirectUpgrade')}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: '#e3f2fd' }]}>
-              <Ionicons name="star-outline" size={24} color="#1976d2" />
-            </View>
-            <Text style={styles.optionText}>Activar Premium</Text>
-            <Ionicons name="chevron-forward" size={24} color="#ccc" />
-          </TouchableOpacity>
           
           {/* Sección de Cerrar Sesión */}
           <TouchableOpacity

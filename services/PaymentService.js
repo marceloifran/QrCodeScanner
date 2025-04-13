@@ -3,19 +3,16 @@ import { db, auth } from '../firebase/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert, Platform } from 'react-native';
 import { SUBSCRIPTION_PLANS } from '../constants/plans';
+import { 
+  MP_PUBLIC_KEY, 
+  MP_ACCESS_TOKEN, 
+  MP_API_URL, 
+  MP_CHECKOUT_URL,
+  MP_WEBHOOK_URL 
+} from '../config/mercadopago';
 
 // Constantes para almacenamiento local
 const SUBSCRIPTION_KEY = '@subscription_info';
-
-// Credenciales de Mercado Pago para pruebas (solo para desarrollo)
-const MP_PUBLIC_KEY = 'TEST-0a99d5a6-92b7-4940-8173-c98a9683a848';
-const MP_ACCESS_TOKEN = 'TEST-7878626425925742-041017-2bae189dde108d47b19609cdc94a038f-721448179';
-
-// URL de la API de Mercado Pago
-const MP_API_URL = 'https://api.mercadopago.com/checkout';
-
-// URL para pruebas de Mercado Pago
-const MP_CHECKOUT_URL = 'https://www.mercadopago.com.ar/checkout/v1/redirect?pref_id=241561424-d0f7a9b5-f383-4df5-a30a-1af06761720a';
 
 /**
  * Función para crear una preferencia de pago con Mercado Pago
@@ -32,25 +29,19 @@ export const createMercadoPagoPreference = async (planId, planName, price, userI
     // Verificar si el plan existe
     const planDetails = SUBSCRIPTION_PLANS.find(plan => plan.id === planId);
     if (!planDetails) {
-      console.error('Plan no encontrado:', planId);
       throw new Error('Plan no encontrado');
     }
     
-    // Obtener información del usuario si está disponible
+    // Obtener información del usuario
     let userEmail = 'usuario@ejemplo.com';
     let userName = 'Usuario';
     
-    try {
-      if (auth && auth.currentUser) {
-        userEmail = auth.currentUser.email || userEmail;
-        userName = auth.currentUser.displayName || userName;
-      }
-    } catch (authError) {
-      console.log('No se pudo obtener información del usuario:', authError);
-      // Continuar con los valores predeterminados
+    if (auth && auth.currentUser) {
+      userEmail = auth.currentUser.email || userEmail;
+      userName = auth.currentUser.displayName || userName;
     }
     
-    // Crear la preferencia directamente usando la API de Mercado Pago
+    // Crear la preferencia
     const preferenceData = {
       items: [
         {
@@ -58,15 +49,15 @@ export const createMercadoPagoPreference = async (planId, planName, price, userI
           title: `Plan ${planName}`,
           description: `Suscripción al plan ${planName}`,
           quantity: 1,
-          currency_id: 'ARS', // Moneda Argentina, cambia según tu país
+          currency_id: 'ARS',
           unit_price: parseFloat(price)
         }
       ],
       payer: {
         email: userEmail,
-        name: userName || 'Usuario'
+        name: userName
       },
-      external_reference: userId, // Referencia para identificar al usuario
+      external_reference: userId,
       back_urls: {
         success: Platform.OS === 'ios' 
           ? "https://qrcodescanner.app.link/payment/success" 
@@ -79,11 +70,12 @@ export const createMercadoPagoPreference = async (planId, planName, price, userI
           : "qrcodescanner://payment/pending"
       },
       auto_return: "approved",
-      statement_descriptor: "QR CODE SCANNER"
+      statement_descriptor: "QR CODE SCANNER",
+      notification_url: MP_WEBHOOK_URL
     };
     
-    // Llamar directamente a la API de Mercado Pago
-    const response = await fetch(`${MP_API_URL}/preferences`, {
+    // Llamar a la API de Mercado Pago
+    const response = await fetch(`${MP_API_URL}/checkout/preferences`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,15 +85,13 @@ export const createMercadoPagoPreference = async (planId, planName, price, userI
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Error en respuesta de Mercado Pago:', errorText);
-      throw new Error(`Error al crear preferencia: ${response.status}`);
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Error al crear preferencia de pago');
     }
     
     const result = await response.json();
-    console.log('Preferencia creada:', result.id);
     
-    // Guardar la información de la transacción para referencia futura
+    // Guardar información de la transacción
     const transactionInfo = {
       preferenceId: result.id,
       planId,
@@ -111,13 +101,12 @@ export const createMercadoPagoPreference = async (planId, planName, price, userI
       timestamp: new Date().toISOString()
     };
     
-    // Guardar en AsyncStorage para poder recuperarlo después
     await AsyncStorage.setItem('@last_transaction', JSON.stringify(transactionInfo));
     
     return {
       preferenceId: result.id,
-      checkoutUrl: result.init_point, // Usar init_point para producción
-      sandboxUrl: result.sandbox_init_point, // Usar sandbox_init_point para pruebas
+      checkoutUrl: result.init_point,
+      sandboxUrl: result.sandbox_init_point,
       success: true
     };
   } catch (error) {
@@ -270,54 +259,106 @@ export const updateUserPlan = async (userId, planId, expirationDate) => {
   }
 };
 
-// Función para verificar el estado de la suscripción
+/**
+ * Función para verificar el estado de una suscripción
+ * @param {string} userId - ID del usuario
+ * @returns {Promise<Object>} - Estado de la suscripción
+ */
 export const checkSubscriptionStatus = async (userId) => {
   try {
-    // Verificar en Firestore
-    const userRef = doc(db, 'businessInfo', userId);
+    const userRef = doc(db, 'users', userId);
     const userDoc = await getDoc(userRef);
-    
+
     if (!userDoc.exists()) {
-      console.error('El usuario no existe en Firestore');
-      return { active: false, plan: 'free' };
+      return {
+        active: false,
+        message: 'Usuario no encontrado'
+      };
     }
-    
+
     const userData = userDoc.data();
-    
-    // Si no tiene suscripción, es plan gratuito
-    if (!userData.subscription) {
-      return { active: true, plan: 'free' };
-    }
-    
     const subscription = userData.subscription;
-    
-    // Verificar si la suscripción está activa
-    if (subscription.status !== 'active') {
-      return { active: false, plan: 'free' };
+
+    if (!subscription) {
+      return {
+        active: false,
+        message: 'No tiene suscripción activa'
+      };
     }
-    
-    // Verificar si la suscripción ha expirado (si tiene fecha de expiración)
-    if (subscription.expirationDate) {
-      const expirationDate = subscription.expirationDate.toDate();
-      if (expirationDate < new Date()) {
-        // La suscripción ha expirado, actualizar en Firestore
-        await updateDoc(userRef, {
-          'subscription.status': 'expired'
-        });
-        return { active: false, plan: 'free' };
-      }
+
+    // Verificar si la suscripción ha expirado
+    const expirationDate = subscription.expirationDate.toDate();
+    const now = new Date();
+
+    if (expirationDate < now) {
+      return {
+        active: false,
+        message: 'Suscripción expirada',
+        planId: subscription.planId,
+        expirationDate: expirationDate
+      };
     }
-    
-    // La suscripción está activa
+
     return {
       active: true,
-      plan: subscription.planId,
-      productLimit: subscription.productLimit,
-      expirationDate: subscription.expirationDate ? subscription.expirationDate.toDate() : null
+      planId: subscription.planId,
+      expirationDate: expirationDate,
+      lastPayment: subscription.lastPayment
     };
   } catch (error) {
-    console.error('Error al verificar estado de suscripción:', error);
-    return { active: false, plan: 'free' };
+    console.error('Error al verificar suscripción:', error);
+    throw error;
+  }
+};
+
+/**
+ * Función para cancelar una suscripción
+ * @param {string} userId - ID del usuario
+ * @returns {Promise<boolean>} - Resultado de la operación
+ */
+export const cancelSubscription = async (userId) => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    
+    await updateDoc(userRef, {
+      'subscription.status': 'cancelled',
+      'subscription.cancelledAt': serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Error al cancelar suscripción:', error);
+    throw error;
+  }
+};
+
+/**
+ * Función para renovar una suscripción
+ * @param {string} userId - ID del usuario
+ * @param {string} planId - ID del plan
+ * @returns {Promise<Object>} - Información de la preferencia de pago
+ */
+export const renewSubscription = async (userId, planId) => {
+  try {
+    // Obtener información del plan
+    const planDetails = SUBSCRIPTION_PLANS.find(plan => plan.id === planId);
+    if (!planDetails) {
+      throw new Error('Plan no encontrado');
+    }
+
+    // Crear preferencia de pago para renovación
+    const preference = await createMercadoPagoPreference(
+      planId,
+      planDetails.name,
+      planDetails.price,
+      userId
+    );
+
+    return preference;
+  } catch (error) {
+    console.error('Error al renovar suscripción:', error);
+    throw error;
   }
 };
 
@@ -410,32 +451,6 @@ const getPaymentStatusMessage = (status) => {
   return messages[status] || 'Estado desconocido';
 };
 
-// Función para cancelar una suscripción
-export const cancelSubscription = async (userId) => {
-  try {
-    // Actualizar en Firestore
-    const userRef = doc(db, 'businessInfo', userId);
-    await updateDoc(userRef, {
-      'subscription.status': 'cancelled',
-      'subscription.cancelledAt': serverTimestamp()
-    });
-    
-    // Actualizar localmente
-    const subscriptionInfo = await getSubscriptionInfo();
-    if (subscriptionInfo && subscriptionInfo.userId === userId) {
-      subscriptionInfo.status = 'cancelled';
-      subscriptionInfo.cancelledAt = new Date().toISOString();
-      await saveSubscriptionInfo(subscriptionInfo);
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error al cancelar suscripción:', error);
-    Alert.alert('Error', 'No se pudo cancelar tu suscripción. Por favor, intenta nuevamente más tarde.');
-    return false;
-  }
-};
-
 /**
  * Función para obtener la URL de la app de Mercado Pago según la plataforma
  * @param {string} preferenceId - ID de la preferencia
@@ -445,98 +460,4 @@ export const getMercadoPagoAppUrl = (preferenceId) => {
   // Para pruebas, retornamos una URL que no abrirá la app
   // así forzamos a usar el WebView
   return `mercadopago://checkout/preferences/${preferenceId}`;
-};
-
-/**
- * Función para actualizar directamente a plan premium sin proceso de pago
- * @param {string} userId - ID del usuario
- * @returns {Promise<boolean>} - true si se actualizó correctamente
- */
-export const upgradeDirectlyToPremium = async (userId) => {
-  try {
-    console.log(`Actualizando directamente a premium para usuario: ${userId}`);
-    
-    if (!userId) {
-      console.error('ID de usuario no proporcionado');
-      throw new Error('ID de usuario no proporcionado');
-    }
-    
-    // Verificar si el usuario existe
-    const userRef = doc(db, 'businessInfo', userId);
-    const userDoc = await getDoc(userRef);
-    
-    // Si el usuario no existe, crear un documento básico para él
-    if (!userDoc.exists()) {
-      console.log('No se encontró documento de usuario, creando uno nuevo');
-      
-      try {
-        // Obtener información básica del usuario desde auth
-        const user = auth.currentUser;
-        const userEmail = user ? user.email : 'usuario@ejemplo.com';
-        const userName = user ? (user.displayName || 'Usuario') : 'Usuario';
-        
-        // Crear un documento básico para el usuario
-        await setDoc(userRef, {
-          name: userName,
-          email: userEmail,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          industry: 'general', // Valor predeterminado
-        });
-        
-        console.log('Documento de usuario creado exitosamente');
-      } catch (createError) {
-        console.error('Error al crear documento de usuario:', createError);
-        // Continuar con la actualización del plan a pesar del error
-      }
-    }
-    
-    // Buscar el plan premium
-    const premiumPlan = SUBSCRIPTION_PLANS.find(plan => plan.id === 'premium');
-    if (!premiumPlan) {
-      console.error('Plan premium no encontrado');
-      throw new Error('Plan premium no encontrado');
-    }
-    
-    // Calcular fecha de expiración (1 año desde ahora)
-    const expirationDate = new Date();
-    expirationDate.setFullYear(expirationDate.getFullYear() + 1);
-    
-    // Crear o actualizar la información de suscripción
-    const subscriptionData = {
-      planId: 'premium',
-      planName: premiumPlan.name,
-      productLimit: premiumPlan.productLimit,
-      startDate: serverTimestamp(),
-      expirationDate: expirationDate, 
-      status: 'active',
-      updatedAt: serverTimestamp(),
-      activationMethod: 'direct_upgrade'
-    };
-    
-    console.log('Datos de suscripción a guardar:', JSON.stringify(subscriptionData));
-    
-    // Actualizar en Firestore
-    await updateDoc(userRef, {
-      subscription: subscriptionData
-    });
-    
-    // Guardar información de la suscripción localmente para acceso rápido
-    const subscriptionInfo = {
-      planId: 'premium',
-      planName: premiumPlan.name,
-      startDate: new Date().toISOString(),
-      expirationDate: expirationDate.toISOString(),
-      status: 'active'
-    };
-    
-    // Usar el servicio para guardar localmente
-    await saveSubscriptionInfo(subscriptionInfo);
-    
-    console.log('Plan actualizado exitosamente a premium');
-    return true;
-  } catch (error) {
-    console.error('Error al actualizar a premium:', error);
-    return false;
-  }
 };

@@ -81,45 +81,41 @@ export default function SubscriptionInfoScreen({ navigation }) {
     if (!subscriptionInfo) return null;
     
     const plan = getPlanById(subscriptionInfo.planId);
+    const isPremium = subscriptionInfo.planId === 'premium';
+    const statusText = subscriptionInfo.status === 'active' ? 'Activa' : 'Inactiva';
+    const expirationDate = formatDate(subscriptionInfo.expirationDate);
+    const lastPaymentDate = formatDate(subscriptionInfo.lastPayment);
+    const nextPaymentDate = formatDate(new Date(subscriptionInfo.expirationDate));
     const productLimit = getProductLimit(subscriptionInfo.planId);
     const limitText = productLimit === Infinity ? 'Ilimitados' : productLimit;
     
     return (
-      <View style={styles.planDetailsContainer}>
-        <View style={[styles.planHeader, { backgroundColor: plan.color }]}>
-          <Text style={styles.planName}>{plan.name}</Text>
-          <Text style={styles.planPrice}>{plan.priceDisplay}<Text style={styles.perMonth}>/mes</Text></Text>
+      <View style={styles.planContainer}>
+        <View style={styles.planHeader}>
+          <Text style={[styles.planName, isPremium && styles.premiumPlanName]}>
+            {subscriptionInfo.planName}
+          </Text>
+          <View style={[styles.statusBadge, 
+            subscriptionInfo.status === 'active' ? styles.activeBadge : styles.inactiveBadge]}>
+            <Text style={styles.statusText}>{statusText}</Text>
+          </View>
         </View>
         
-        <View style={styles.planInfoContainer}>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Estado:</Text>
-            <View style={[styles.statusBadge, { 
-              backgroundColor: subscriptionInfo.active ? '#28a745' : '#dc3545' 
-            }]}>
-              <Text style={styles.statusText}>
-                {subscriptionInfo.active ? 'Activo' : 'Inactivo'}
-              </Text>
-            </View>
-          </View>
-          
-          {subscriptionInfo.expirationDate && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Vence el:</Text>
-              <Text style={styles.infoValue}>{formatDate(subscriptionInfo.expirationDate)}</Text>
-            </View>
-          )}
-          
+        <View style={styles.detailsContainer}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Límite de productos:</Text>
-            <Text style={styles.infoValue}>{limitText}</Text>
+            <Text style={styles.infoValue}>
+              {subscriptionInfo.productLimit === 'infinity' ? 'Ilimitado' : subscriptionInfo.productLimit}
+            </Text>
           </View>
-          
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Productos actuales:</Text>
-            <Text style={styles.infoValue}>{productCount}</Text>
+            <Text style={styles.infoLabel}>Último pago:</Text>
+            <Text style={styles.infoValue}>{lastPaymentDate}</Text>
           </View>
-          
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Próximo pago:</Text>
+            <Text style={styles.infoValue}>{nextPaymentDate}</Text>
+          </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Productos restantes:</Text>
             <Text style={[styles.infoValue, remainingProducts < 20 ? styles.warningText : null]}>
@@ -245,7 +241,7 @@ const styles = StyleSheet.create({
     padding: 15,
     paddingBottom: 30,
   },
-  planDetailsContainer: {
+  planContainer: {
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#e0e0e0',
@@ -262,16 +258,26 @@ const styles = StyleSheet.create({
     color: 'white',
     marginBottom: 5,
   },
-  planPrice: {
-    fontSize: 24,
-    fontWeight: 'bold',
+  premiumPlanName: {
+    color: '#ff9800',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+  },
+  activeBadge: {
+    backgroundColor: '#28a745',
+  },
+  inactiveBadge: {
+    backgroundColor: '#dc3545',
+  },
+  statusText: {
     color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
-  perMonth: {
-    fontSize: 14,
-    fontWeight: 'normal',
-  },
-  planInfoContainer: {
+  detailsContainer: {
     padding: 15,
     backgroundColor: 'white',
   },
@@ -294,16 +300,6 @@ const styles = StyleSheet.create({
   },
   warningText: {
     color: '#ff9800',
-    fontWeight: 'bold',
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
-  },
-  statusText: {
-    color: 'white',
-    fontSize: 12,
     fontWeight: 'bold',
   },
   featuresContainer: {

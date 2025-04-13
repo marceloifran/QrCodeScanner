@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Ifsin Negocios",
-    "slug": "ifsin-negocios",
+    "slug": "kiosko-app",
     "version": "1.0.0",
     "plugins": [
       [
@@ -78,31 +78,16 @@
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
-      ],
-      "config": {
-        "googleMobileAdsAppId": "ca-app-pub-xxxxxxxxxxxxxxxx~yyyyyyyyyy"
-      }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "scheme": "qrcodescanner",
-    "sdkVersion": "52.0.0",
-    "newArchEnabled": true,
     "extra": {
       "eas": {
         "projectId": "c418f4af-b5b3-476e-97b8-3d17c2637b79"
       }
-    },
-    "owner": "marceloifran",
-    "description": "Aplicación para gestión de inventario y ventas con lector de códigos QR y códigos de barras. Ideal para pequeños negocios y kioscos.",
-    "primaryColor": "#3498db",
-    "updates": {
-      "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/c418f4af-b5b3-476e-97b8-3d17c2637b79"
-    },
-    "runtimeVersion": {
-      "policy": "appVersion"
     }
   }
 }

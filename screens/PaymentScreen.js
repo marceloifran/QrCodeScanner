@@ -474,7 +474,7 @@ export default function PaymentScreen({ navigation, route }) {
       >
         <Ionicons name="arrow-back" size={24} color="#333" />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Pago Seguro</Text>
+      <Text style={styles.headerTitle}>Pago</Text>
       <View style={styles.placeholder} />
     </View>
   );
@@ -487,86 +487,35 @@ export default function PaymentScreen({ navigation, route }) {
   );
 
   const renderContent = () => (
-    <View style={styles.contentContainer}>
-      <Text style={styles.title}>Resumen de compra</Text>
-      
-      <View style={styles.planCard}>
+    <View style={styles.content}>
+      <View style={styles.planInfo}>
         <Text style={styles.planName}>{planName}</Text>
-        <Text style={styles.planPrice}>$ {price}</Text>
+        <Text style={styles.planPrice}>${price}</Text>
       </View>
-      
+
+      <View style={styles.paymentInfo}>
+        <Text style={styles.paymentInfoText}>
+          Serás redirigido a Mercado Pago para completar el pago de forma segura.
+        </Text>
+      </View>
+
       <TouchableOpacity
         style={styles.payButton}
         onPress={() => openPaymentBrowser(paymentUrl)}
+        disabled={paymentProcessing}
       >
-        <Text style={styles.payButtonText}>Realizar Pago</Text>
+        {paymentProcessing ? (
+          <ActivityIndicator color="white" />
+        ) : (
+          <Text style={styles.payButtonText}>Pagar con Mercado Pago</Text>
+        )}
       </TouchableOpacity>
-      
-      <Text style={styles.securityText}>
-        Todos los pagos son procesados de forma segura por Mercado Pago
-      </Text>
-      
-      {__DEV__ && (
-        <View style={styles.testCardsContainer}>
-          <Text style={styles.testCardsTitle}>Tarjetas para pruebas:</Text>
-          <View style={styles.testCardItem}>
-            <Text style={styles.testCardLabel}>Mastercard:</Text>
-            <Text style={styles.testCardNumber}>5031 7557 3453 0604</Text>
-          </View>
-          <View style={styles.testCardItem}>
-            <Text style={styles.testCardLabel}>Visa:</Text>
-            <Text style={styles.testCardNumber}>4509 9535 6623 3704</Text>
-          </View>
-          <View style={styles.testCardItem}>
-            <Text style={styles.testCardLabel}>American Express:</Text>
-            <Text style={styles.testCardNumber}>3711 803052 57522</Text>
-          </View>
-          <Text style={styles.testCardNote}>Código: 123 o 1234 | Fecha: 11/30</Text>
-          
-          <View style={styles.divider} />
-          
-          <Text style={styles.testCardLabel}>Datos del titular:</Text>
-          <View style={styles.testCardItem}>
-            <Text style={styles.testCardLabel}>Nombre:</Text>
-            <Text style={styles.testCardNumber}>APRO (aprobado) o OTHE (rechazado)</Text>
-          </View>
-          <View style={styles.testCardItem}>
-            <Text style={styles.testCardLabel}>DNI:</Text>
-            <Text style={styles.testCardNumber}>12345678</Text>
-          </View>
-        </View>
-      )}
-      
-      <TouchableOpacity
-        style={styles.manualVerificationButton}
-        onPress={() => setShowManualVerification(true)}
-      >
-        <Text style={styles.manualVerificationButtonText}>Verificar pago manualmente</Text>
-      </TouchableOpacity>
-      
-      {showManualVerification && (
-        <View style={styles.manualVerificationContainer}>
-          <Text style={styles.manualVerificationTitle}>Ingrese el ID de pago:</Text>
-          <TextInput
-            style={styles.manualVerificationInput}
-            value={manualPaymentId}
-            onChangeText={(text) => setManualPaymentId(text)}
-            placeholder="Ingrese el ID de pago"
-          />
-          <TouchableOpacity
-            style={styles.manualVerificationVerifyButton}
-            onPress={verifyManualPayment}
-          >
-            <Text style={styles.manualVerificationVerifyButtonText}>Verificar</Text>
-          </TouchableOpacity>
-        </View>
-      )}
     </View>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <StatusBar barStyle="dark-content" backgroundColor="white" />
       {renderHeader()}
       {loading ? renderLoading() : renderContent()}
     </SafeAreaView>
@@ -599,20 +548,11 @@ const styles = StyleSheet.create({
   placeholder: {
     width: 34,
   },
-  contentContainer: {
+  content: {
     flex: 1,
     padding: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  planCard: {
-    backgroundColor: '#f7f7f7',
-    padding: 15,
-    borderRadius: 10,
+  planInfo: {
     marginBottom: 20,
   },
   planName: {
@@ -623,6 +563,14 @@ const styles = StyleSheet.create({
   planPrice: {
     fontSize: 16,
     color: '#666',
+  },
+  paymentInfo: {
+    marginBottom: 20,
+  },
+  paymentInfoText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
   },
   payButton: {
     backgroundColor: colors.primary,
@@ -640,51 +588,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginLeft: 8,
   },
-  securityText: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  testCardsContainer: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-  },
-  testCardsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  testCardItem: {
-    flexDirection: 'row',
-    marginBottom: 5,
-  },
-  testCardLabel: {
-    fontSize: 14,
-    color: '#555',
-    width: 120,
-  },
-  testCardNumber: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  testCardNote: {
-    fontSize: 13,
-    color: '#666',
-    marginTop: 5,
-    fontStyle: 'italic',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#ddd',
-    marginVertical: 10,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -695,55 +598,5 @@ const styles = StyleSheet.create({
     marginTop: 15,
     fontSize: 16,
     color: '#555',
-  },
-  manualVerificationButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  manualVerificationButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  manualVerificationContainer: {
-    padding: 20,
-    backgroundColor: '#f7f7f7',
-    borderRadius: 10,
-    marginBottom: 20,
-  },
-  manualVerificationTitle: {
-    fontSize: 18,
-    color: '#333',
-    marginBottom: 10,
-  },
-  manualVerificationInput: {
-    height: 40,
-    borderColor: 'gray',
-    borderWidth: 1,
-    marginBottom: 10,
-    padding: 10,
-  },
-  manualVerificationVerifyButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  manualVerificationVerifyButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
   },
 });
