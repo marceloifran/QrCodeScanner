@@ -293,17 +293,30 @@ export default function ScanProductScreen({ navigation, route }) {
         ...doc.data()
       }));
       
-      // Filtrar por nombre o código
-      const filtered = products.filter(product => 
-        product.name.toLowerCase().includes(searchText.toLowerCase()) ||
-        product.barcode.includes(searchText)
-      );
+      // Normalizar el texto de búsqueda (eliminar acentos)
+      const normalizedSearchText = searchText.toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+      
+      // Filtrar por nombre o código, normalizando el nombre para comparación sin acentos
+      const filtered = products.filter(product => {
+        // Normalizar el nombre del producto (eliminar acentos)
+        const normalizedName = product.name.toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+        
+        return normalizedName.includes(normalizedSearchText) ||
+               product.barcode.includes(searchText);
+      });
       
       setSearchResults(filtered);
       
-      // Cerrar el teclado automáticamente cuando hay resultados
+      // Cerrar el teclado automáticamente cuando hay resultados, con un retraso
       if (filtered.length > 0) {
-        Keyboard.dismiss();
+        // Agregar un retraso de 1.5 segundos antes de cerrar el teclado
+        setTimeout(() => {
+          Keyboard.dismiss();
+        }, 1500);
       }
     } catch (error) {
       console.error('Error al buscar productos:', error);
@@ -563,29 +576,6 @@ export default function ScanProductScreen({ navigation, route }) {
                             stock: item.stock
                           }]);
                         }
-                        
-                        // Mostrar confirmación visual
-                        Alert.alert(
-                          'Producto agregado',
-                          `${item.name} agregado al carrito`,
-                          [
-                            {
-                              text: 'Seguir comprando',
-                              onPress: () => {}, // No hacer nada, mantener el modal abierto
-                              style: 'cancel'
-                            },
-                            {
-                              text: 'Ver carrito',
-                              onPress: () => {
-                                setSearchModalVisible(false);
-                                setSearchQuery('');
-                                setSearchResults([]);
-                                setScanning(false); // Mostrar vista de carrito
-                              }
-                            }
-                          ],
-                          { cancelable: true }
-                        );
                       }}
                     >
                       <View style={styles.searchResultContent}>

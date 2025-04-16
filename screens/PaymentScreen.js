@@ -42,8 +42,6 @@ export default function PaymentScreen({ navigation, route }) {
       let url = event?.url || '';
       if (!url) return;
       
-      console.log('Deep link recibido:', url);
-      
       // Manejar diferentes formatos de URL (deep link directo y URL universal)
       if (url.includes('success') || url.includes('payment/success')) {
         const paymentId = extractPaymentId(url);
@@ -99,7 +97,6 @@ export default function PaymentScreen({ navigation, route }) {
     try {
       // Usar Chrome Custom Tabs o Safari View Controller
       const result = await WebBrowser.openBrowserAsync(url);
-      console.log('Resultado del navegador:', result);
       
       // Verificar el resultado
       if (result.type === 'dismiss') {
@@ -129,20 +126,16 @@ export default function PaymentScreen({ navigation, route }) {
   // Función para extraer el ID de pago de la URL de retorno
   const extractPaymentId = (url) => {
     try {
-      console.log('Extrayendo payment_id de URL:', url);
-      
       // Intentar extraer payment_id de la URL usando diferentes patrones
       // Patrón 1: payment_id como parámetro de consulta
       const paymentIdMatch = url.match(/payment_id=([^&]+)/);
       if (paymentIdMatch && paymentIdMatch[1]) {
-        console.log('Payment ID encontrado (patrón 1):', paymentIdMatch[1]);
         return paymentIdMatch[1];
       }
       
       // Patrón 2: collection_id como parámetro de consulta (alternativo en Mercado Pago)
       const collectionIdMatch = url.match(/collection_id=([^&]+)/);
       if (collectionIdMatch && collectionIdMatch[1]) {
-        console.log('Collection ID encontrado (patrón 2):', collectionIdMatch[1]);
         return collectionIdMatch[1];
       }
       
@@ -155,21 +148,18 @@ export default function PaymentScreen({ navigation, route }) {
         // Intentar obtener payment_id
         const paymentId = urlParams.get('payment_id');
         if (paymentId) {
-          console.log('Payment ID encontrado (patrón 3):', paymentId);
           return paymentId;
         }
         
         // Intentar obtener collection_id como alternativa
         const collectionId = urlParams.get('collection_id');
         if (collectionId) {
-          console.log('Collection ID encontrado (patrón 3):', collectionId);
           return collectionId;
         }
         
         // Intentar obtener cualquier ID que pueda ser relevante
         const externalReference = urlParams.get('external_reference');
         if (externalReference) {
-          console.log('External reference encontrado:', externalReference);
           return externalReference;
         }
       }
@@ -195,9 +185,7 @@ export default function PaymentScreen({ navigation, route }) {
       );
       
       // Verificar el pago usando el servicio
-      console.log(`Verificando pago: ${paymentId}, preferenceId: ${preferenceId}`);
       const paymentResult = await verifyPayment(paymentId, preferenceId);
-      console.log('Resultado de verificación:', JSON.stringify(paymentResult));
       
       // Verificar si el pago fue aprobado
       if (!paymentResult.success) {
@@ -248,11 +236,8 @@ export default function PaymentScreen({ navigation, route }) {
       expirationDate.setMonth(expirationDate.getMonth() + 1);
       
       // Actualizar el plan del usuario en Firestore
-      console.log(`Actualizando plan: ${planId} para usuario: ${userId}`);
-      
       try {
         const updated = await updateUserPlan(userId, planId, expirationDate);
-        console.log('Resultado de actualización:', updated);
         
         if (updated) {
           // Guardar información de la suscripción localmente para acceso rápido
@@ -360,9 +345,7 @@ export default function PaymentScreen({ navigation, route }) {
       );
       
       // Verificar el pago usando el servicio
-      console.log(`Verificando pago manual: ${manualPaymentId}, preferenceId: ${preferenceId}`);
       const paymentResult = await verifyPayment(manualPaymentId, preferenceId);
-      console.log('Resultado de verificación manual:', JSON.stringify(paymentResult));
       
       // Procesar el resultado igual que en handlePaymentSuccess
       if (paymentResult.success) {
@@ -372,11 +355,8 @@ export default function PaymentScreen({ navigation, route }) {
         expirationDate.setMonth(expirationDate.getMonth() + 1);
         
         // Actualizar el plan del usuario en Firestore
-        console.log(`Actualizando plan: ${planId} para usuario: ${userId}`);
-        
         try {
           const updated = await updateUserPlan(userId, planId, expirationDate);
-          console.log('Resultado de actualización:', updated);
           
           if (updated) {
             // Guardar información de la suscripción localmente para acceso rápido

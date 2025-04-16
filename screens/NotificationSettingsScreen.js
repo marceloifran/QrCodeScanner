@@ -3,223 +3,221 @@ import {
   StyleSheet, 
   View, 
   Text, 
-  FlatList, 
   Switch, 
   ActivityIndicator,
   TouchableOpacity,
   Alert,
-  TextInput,
   ScrollView,
-  StatusBar
+  StatusBar,
+  TextInput
 } from 'react-native';
-import { collection, query, getDocs, where, doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 
+const DEFAULT_SETTINGS = {
+  lowStock: {
+    enabled: true,
+    threshold: 5
+  },
+  expiration: {
+    enabled: true,
+    criticalDays: 7,  // Alerta roja - 7 días o menos
+    warningDays: 15,  // Alerta naranja - 15 días o menos
+    noticeDays: 30    // Alerta amarilla - 30 días o menos
+  }
+};
+
 export default function NotificationSettingsScreen({ navigation }) {
-  const [products, setProducts] = useState([]);
-  const [settings, setSettings] = useState({});
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  
+
   useEffect(() => {
-    loadData();
+    loadSettings();
   }, []);
-  
-  const loadData = async () => {
-    setLoading(true);
+
+  const loadSettings = async () => {
     try {
-      // Cargar productos
-      const q = query(
-        collection(db, 'products'),
-        where('userId', '==', auth.currentUser.uid)
-      );
-      const querySnapshot = await getDocs(q);
-      const productsList = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Ordenar alfabéticamente
-      productsList.sort((a, b) => a.name.localeCompare(b.name));
-      setProducts(productsList);
-      
-      // Cargar configuraciones
+      setLoading(true);
       const settingsDoc = await getDoc(doc(db, 'notificationSettings', auth.currentUser.uid));
       if (settingsDoc.exists()) {
-        setSettings(settingsDoc.data().productSettings || {});
+        setSettings(settingsDoc.data() || DEFAULT_SETTINGS);
+      } else {
+        // Si no existe, crear con valores por defecto
+        await setDoc(doc(db, 'notificationSettings', auth.currentUser.uid), DEFAULT_SETTINGS);
+        setSettings(DEFAULT_SETTINGS);
       }
     } catch (error) {
-      console.error('Error al cargar datos:', error);
+      console.error('Error al cargar configuraciones:', error);
       Alert.alert('Error', 'No se pudieron cargar las configuraciones');
     } finally {
       setLoading(false);
     }
   };
-  
-  const toggleNotification = async (productId, type = 'stock') => {
+
+  const saveSettings = async (newSettings) => {
     try {
-      // Si no existe configuración para este producto, inicializarla
-      if (!settings[productId]) {
-        settings[productId] = { stock: true, expiry: true };
-      }
-      
-      // Crear una copia de la configuración actual
-      const productSettings = {...settings[productId]};
-      
-      // Cambiar el valor del tipo específico (stock o expiry)
-      productSettings[type] = !productSettings[type];
-      
-      // Actualizar el estado
-      const newSettings = {
-        ...settings,
-        [productId]: productSettings
-      };
-      
+      await setDoc(doc(db, 'notificationSettings', auth.currentUser.uid), newSettings);
       setSettings(newSettings);
-      
-      // Guardar en Firestore
-      await setDoc(doc(db, 'notificationSettings', auth.currentUser.uid), {
-        productSettings: newSettings
-      }, { merge: true });
+      Alert.alert('Éxito', 'Configuraciones guardadas correctamente');
     } catch (error) {
-      console.error('Error al actualizar configuración:', error);
-      Alert.alert('Error', 'No se pudo guardar la configuración');
+      console.error('Error al guardar configuraciones:', error);
+      Alert.alert('Error', 'No se pudieron guardar las configuraciones');
     }
   };
-  
-  const filteredProducts = () => {
-    let result = [...products];
-    
-    // Filtrar por búsqueda
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(product => 
-        product.name.toLowerCase().includes(query)
-      );
+
+  const handleExpirationDaysChange = (type, value) => {
+    const numValue = parseInt(value) || 0;
+    const newSettings = { ...settings };
+    newSettings.expiration[type] = numValue;
+
+    // Validar que los días tengan sentido (crítico < advertencia < aviso)
+    if (type === 'criticalDays' && numValue >= settings.expiration.warningDays) {
+      Alert.alert('Error', 'Los días críticos deben ser menos que los días de advertencia');
+      return;
     }
-    
-    return result;
+    if (type === 'warningDays') {
+      if (numValue <= settings.expiration.criticalDays) {
+        Alert.alert('Error', 'Los días de advertencia deben ser más que los días críticos');
+        return;
+      }
+      if (numValue >= settings.expiration.noticeDays) {
+        Alert.alert('Error', 'Los días de advertencia deben ser menos que los días de aviso');
+        return;
+      }
+    }
+    if (type === 'noticeDays' && numValue <= settings.expiration.warningDays) {
+      Alert.alert('Error', 'Los días de aviso deben ser más que los días de advertencia');
+      return;
+    }
+
+    saveSettings(newSettings);
   };
-  
-  const renderItem = ({ item }) => {
-    // Obtener configuración del producto o usar valores predeterminados
-    const productConfig = settings[item.id] || { stock: true, expiry: true };
-    const isLowStock = item.stock <= 5;
-    
+
+  if (loading) {
     return (
-      <View style={styles.productItem}>
-        <View style={styles.productInfo}>
-          <Text style={styles.productName}>{item.name}</Text>
-          <View style={styles.productDetails}>
-            <View style={styles.stockContainer}>
-              <Ionicons 
-                name="cube-outline" 
-                size={16} 
-                color={isLowStock ? colors.error : colors.text.secondary} 
-                style={styles.detailIcon}
-              />
-              <Text style={[
-                styles.stockText,
-                isLowStock && styles.lowStockText
-              ]}>
-                Stock: {item.stock}
-              </Text>
-            </View>
-            <View style={styles.priceContainer}>
-              <Ionicons 
-                name="pricetag-outline" 
-                size={16} 
-                color={colors.text.secondary} 
-                style={styles.detailIcon}
-              />
-              <Text style={styles.priceText}>
-                Precio: ${parseFloat(item.price).toFixed(2)}
-              </Text>
-            </View>
-          </View>
-          {item.category && (
-            <View style={styles.categoryTag}>
-              <Ionicons 
-                name={getCategoryIcon(item.category)} 
-                size={12} 
-                color={colors.primary} 
-              />
-              <Text style={styles.categoryText}>
-                {getCategoryName(item.category)}
-              </Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.switchesContainer}>
-          <View style={styles.switchItem}>
-            <Text style={styles.switchLabel}>Stock</Text>
-            <Switch
-              value={productConfig.stock}
-              onValueChange={() => toggleNotification(item.id, 'stock')}
-              trackColor={{ false: '#d3d3d3', true: colors.primary }}
-            />
-          </View>
-          <View style={styles.switchItem}>
-            <Text style={styles.switchLabel}>Venc.</Text>
-            <Switch
-              value={productConfig.expiry}
-              onValueChange={() => toggleNotification(item.id, 'expiry')}
-              trackColor={{ false: '#d3d3d3', true: colors.primary }}
-            />
-          </View>
-        </View>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
-  };
-  
+  }
+
   return (
     <View style={styles.container}>
-      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
-      
-      <View style={styles.header}>
-        <Text style={styles.title}>Configurar Notificaciones</Text>
-        <Text style={styles.subtitle}>Activa o desactiva notificaciones por producto</Text>
-      </View>
-      
+      <StatusBar barStyle="dark-content" />
       <ScrollView>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#666" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar productos..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color="#666" />
-            </TouchableOpacity>
-          ) : null}
+        {/* Configuración de Stock Bajo */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="alert-circle-outline" size={24} color={colors.warning} />
+            <Text style={styles.sectionTitle}>Alertas de Stock Bajo</Text>
+          </View>
+          
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Activar notificaciones</Text>
+            <Switch
+              value={settings.lowStock.enabled}
+              onValueChange={(value) => {
+                const newSettings = { 
+                  ...settings,
+                  lowStock: { ...settings.lowStock, enabled: value }
+                };
+                saveSettings(newSettings);
+              }}
+            />
+          </View>
+
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Umbral de stock bajo</Text>
+            <TextInput
+              style={styles.input}
+              keyboardType="numeric"
+              value={settings.lowStock.threshold.toString()}
+              onChangeText={(value) => {
+                const newSettings = { 
+                  ...settings,
+                  lowStock: { ...settings.lowStock, threshold: parseInt(value) || 0 }
+                };
+                saveSettings(newSettings);
+              }}
+            />
+          </View>
         </View>
-        
-        {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-        ) : (
-          <FlatList
-            data={filteredProducts()}
-            keyExtractor={item => item.id}
-            renderItem={renderItem}
-            contentContainerStyle={styles.listContainer}
-            scrollEnabled={false}
-            ListEmptyComponent={
-              <View style={styles.emptyContainer}>
-                <Ionicons name="information-circle" size={50} color={colors.text.secondary} />
-                <Text style={styles.emptyText}>
-                  {searchQuery 
-                    ? 'No se encontraron productos que coincidan con la búsqueda' 
-                    : 'No hay productos registrados'}
-                </Text>
+
+        {/* Configuración de Vencimientos */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="time-outline" size={24} color={colors.danger} />
+            <Text style={styles.sectionTitle}>Alertas de Vencimiento</Text>
+          </View>
+
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Activar notificaciones</Text>
+            <Switch
+              value={settings.expiration.enabled}
+              onValueChange={(value) => {
+                const newSettings = { 
+                  ...settings,
+                  expiration: { ...settings.expiration, enabled: value }
+                };
+                saveSettings(newSettings);
+              }}
+            />
+          </View>
+
+          <View style={styles.alertLevelsContainer}>
+            <Text style={styles.alertLevelsTitle}>Niveles de Alerta</Text>
+            
+            <View style={[styles.alertLevel, { borderColor: colors.danger }]}>
+              <View style={styles.alertLevelHeader}>
+                <View style={[styles.alertDot, { backgroundColor: colors.danger }]} />
+                <Text style={styles.alertLevelTitle}>Alerta Crítica</Text>
               </View>
-            }
-          />
-        )}
+              <View style={styles.alertLevelInput}>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={settings.expiration.criticalDays.toString()}
+                  onChangeText={(value) => handleExpirationDaysChange('criticalDays', value)}
+                />
+                <Text style={styles.daysLabel}>días o menos</Text>
+              </View>
+            </View>
+
+            <View style={[styles.alertLevel, { borderColor: colors.warning }]}>
+              <View style={styles.alertLevelHeader}>
+                <View style={[styles.alertDot, { backgroundColor: colors.warning }]} />
+                <Text style={styles.alertLevelTitle}>Advertencia</Text>
+              </View>
+              <View style={styles.alertLevelInput}>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={settings.expiration.warningDays.toString()}
+                  onChangeText={(value) => handleExpirationDaysChange('warningDays', value)}
+                />
+                <Text style={styles.daysLabel}>días o menos</Text>
+              </View>
+            </View>
+
+            <View style={[styles.alertLevel, { borderColor: '#FFD700' }]}>
+              <View style={styles.alertLevelHeader}>
+                <View style={[styles.alertDot, { backgroundColor: '#FFD700' }]} />
+                <Text style={styles.alertLevelTitle}>Aviso Anticipado</Text>
+              </View>
+              <View style={styles.alertLevelInput}>
+                <TextInput
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={settings.expiration.noticeDays.toString()}
+                  onChangeText={(value) => handleExpirationDaysChange('noticeDays', value)}
+                />
+                <Text style={styles.daysLabel}>días o menos</Text>
+              </View>
+            </View>
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
@@ -230,130 +228,87 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fa',
   },
-  header: {
-    padding: 20,
-    backgroundColor: colors.primary,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: 'white',
+  section: {
+    backgroundColor: 'white',
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 8,
+    marginHorizontal: 16,
   },
-  subtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 5,
-  },
-  searchContainer: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'white',
-    margin: 15,
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
+    marginBottom: 16,
   },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-    color: colors.text.primary,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    color: '#333',
   },
-  loader: {
-    marginTop: 30,
-  },
-  listContainer: {
-    padding: 15,
-    paddingBottom: 40,
-  },
-  productItem: {
+  settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#eee',
+    paddingVertical: 8,
   },
-  productInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  productName: {
+  settingLabel: {
     fontSize: 16,
-    fontWeight: '500',
-    color: colors.text.primary,
-    marginBottom: 5,
+    color: '#333',
+    flex: 1,
   },
-  productDetails: {
-    flexDirection: 'row',
-    marginBottom: 5,
-  },
-  stockContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: 15,
-  },
-  priceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  detailIcon: {
-    marginRight: 5,
-  },
-  stockText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-  },
-  lowStockText: {
-    color: colors.error,
-    fontWeight: '500',
-  },
-  priceText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-  },
-  categoryTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f8ff',
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  categoryText: {
-    fontSize: 12,
-    color: colors.primary,
-    marginLeft: 4,
-  },
-  switchesContainer: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-  },
-  switchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 5,
-  },
-  switchLabel: {
-    fontSize: 12,
-    color: colors.text.secondary,
-    marginRight: 8,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 50,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: colors.text.secondary,
-    marginTop: 10,
+    width: 60,
     textAlign: 'center',
   },
-}); 
+  alertLevelsContainer: {
+    marginTop: 16,
+  },
+  alertLevelsTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 12,
+    color: '#333',
+  },
+  alertLevel: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  alertLevelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  alertDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  alertLevelTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+  },
+  alertLevelInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  daysLabel: {
+    marginLeft: 8,
+    color: '#666',
+    fontSize: 14,
+  },
+});

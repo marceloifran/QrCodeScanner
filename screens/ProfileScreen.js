@@ -30,13 +30,11 @@ export default function ProfileScreen({ navigation, route }) {
       setLoading(true);
       
       if (!auth.currentUser) {
-        console.log('No hay usuario autenticado');
         setLoading(false);
         return;
       }
       
       const userId = auth.currentUser.uid;
-      console.log('Cargando suscripción para usuario:', userId);
       
       // Obtener información de suscripción
       const userRef = doc(db, 'businessInfo', userId);
@@ -44,7 +42,6 @@ export default function ProfileScreen({ navigation, route }) {
       
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        console.log('Datos del usuario:', JSON.stringify(userData));
         
         if (userData.subscription) {
           setSubscriptionInfo(userData.subscription);
@@ -52,7 +49,6 @@ export default function ProfileScreen({ navigation, route }) {
           setSubscriptionInfo({ planId: 'free', planName: 'Gratuito', status: 'active' });
         }
       } else {
-        console.log('No se encontró documento de usuario');
         setSubscriptionInfo({ planId: 'free', planName: 'Gratuito', status: 'active' });
       }
     } catch (error) {

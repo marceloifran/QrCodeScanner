@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getStorage } from "firebase/storage";
 
@@ -37,7 +37,26 @@ try {
   console.error("Error inicializando Auth:", error);
 }
 
+// Configuración optimizada de Firestore
 const db = getFirestore(app);
+
+// Habilitar persistencia offline y configurar caché para mejorar rendimiento
+// y reducir errores de conexión
+try {
+  enableIndexedDbPersistence(db, {
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+  }).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      // Múltiples pestañas abiertas, la persistencia solo puede habilitarse en una
+      console.warn('La persistencia de Firestore no pudo habilitarse: múltiples pestañas abiertas');
+    } else if (err.code === 'unimplemented') {
+      // El navegador actual no soporta las características requeridas
+      console.warn('La persistencia de Firestore no está disponible en este entorno');
+    }
+  });
+} catch (error) {
+  console.error("Error al configurar persistencia de Firestore:", error);
+}
 
 // Función para obtener el usuario actual
 export const getCurrentUser = () => {

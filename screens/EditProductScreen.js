@@ -67,20 +67,30 @@ export default function EditProductScreen({ navigation, route }) {
 
     const loadCategories = async () => {
       try {
+        // Verificar si el usuario está autenticado antes de hacer consultas
+        if (!auth.currentUser) {
+          setCategories(getCategoriesForIndustry("general"));
+          return;
+        }
+
         // Cargar la industria del usuario
         const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
-        const businessInfoDoc = await getDoc(businessInfoRef);
+        
+        // Usar getDoc con manejo de errores mejorado
+        let businessInfoDoc;
+        try {
+          businessInfoDoc = await getDoc(businessInfoRef);
+        } catch (error) {
+          console.error("Error al obtener datos de negocio:", error);
+          // Usar valores predeterminados en caso de error
+          setCategories(getCategoriesForIndustry("general"));
+          return;
+        }
 
         let userIndustry = "general";
         if (businessInfoDoc.exists()) {
           userIndustry = businessInfoDoc.data().industry || "general";
         }
-
-        console.log(
-          "EditProduct - Cargando datos para industria:",
-          userIndustry
-        );
-
         // Obtener categorías directamente de categoryUtils
         const industryCategories = getCategoriesForIndustry(userIndustry);
         setCategories(industryCategories);

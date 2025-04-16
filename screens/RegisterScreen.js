@@ -28,6 +28,12 @@ const INDUSTRY_TYPES = [
   { id: 'clothing', name: 'Tienda de Ropa', icon: 'shirt-outline' },
 ];
 
+// Lista de planes de suscripción
+const SUBSCRIPTION_PLANS = [
+  { id: 'base', name: 'Plan Básico', price: 0, description: 'Plan básico con características limitadas' },
+  { id: 'premium', name: 'Plan Premium', price: 100, description: 'Plan premium con características avanzadas' },
+];
+
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,100 +44,94 @@ export default function RegisterScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showIndustryModal, setShowIndustryModal] = useState(false);
-  const [subscriptionPlan, setSubscriptionPlan] = useState('base');
-  
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
+
   const handleRegister = async () => {
-    // Validaciones
-    if (!email || !password || !confirmPassword || !businessName) {
-      Alert.alert('Error', 'Por favor completa todos los campos');
-      return;
-    }
-    
-    if (password !== confirmPassword) {
-      Alert.alert('Error', 'Las contraseñas no coinciden');
-      return;
-    }
-    
-    if (password.length < 6) {
-      Alert.alert('Error', 'La contraseña debe tener al menos 6 caracteres');
-      return;
-    }
-    
-    setLoading(true);
     try {
-      // Crear usuario en Firebase Auth
+      // Validaciones
+      if (!email || !password || !confirmPassword || !businessName) {
+        Alert.alert('Error', 'Por favor completa todos los campos');
+        return;
+      }
+      
+      if (password !== confirmPassword) {
+        Alert.alert('Error', 'Las contraseñas no coinciden');
+        return;
+      }
+
+      if (!selectedPlan || !paymentCompleted) {
+        Alert.alert('Error', 'Debes seleccionar y pagar un plan para registrarte');
+        return;
+      }
+
+      setLoading(true);
+
+      // Crear usuario
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      
-      // Actualizar el perfil del usuario con el nombre del negocio
+
+      // Actualizar perfil
       await updateProfile(user, {
         displayName: businessName
       });
-      
-      // Guardar información del negocio en Firestore
-      await setDoc(doc(db, 'businessInfo', user.uid), {
-        name: businessName,
-        industry: industry,
+
+      // Guardar información adicional en Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        email,
+        businessName,
+        industry,
+        planId: selectedPlan.id,
         createdAt: new Date(),
-        subscriptionPlan: subscriptionPlan,
-        subscriptionExpiration: null
+        subscriptionStatus: 'active',
+        subscriptionStartDate: new Date(),
+        subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 días
       });
-      
-      // Crear configuración de campos personalizados según la industria
-      await setDoc(doc(db, 'industryConfig', user.uid), {
-        industry: industry,
-        customFields: getCustomFieldsForIndustry(industry),
-        createdAt: new Date()
-      });
-      
-      // Crear documento de notificaciones
-      await setDoc(doc(db, 'notificationSettings', user.uid), {
-        lowStock: true,
-        zeroStock: true,
-        productsByCategory: {}
-      });
-      
-      // Mostrar mensaje de éxito
-      Alert.alert(
-        'Registro Exitoso',
-        'Tu cuenta ha sido creada correctamente',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // La navegación automática al Dashboard debería ocurrir por el AuthContext
-              // Pero podemos forzarla aquí para asegurarnos
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Main' }],
-              });
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('Error al registrar usuario:', error);
-      let errorMessage = 'Ocurrió un error al registrar el usuario';
-      
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'Este correo electrónico ya está en uso';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'El correo electrónico no es válido';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'La contraseña es demasiado débil';
-      }
-      
-      Alert.alert('Error', errorMessage);
-    } finally {
+
       setLoading(false);
+      navigation.replace('Main');
+    } catch (error) {
+      setLoading(false);
+      console.error('Error al registrar:', error);
+      Alert.alert('Error', 'Hubo un error al crear la cuenta. Por favor intenta nuevamente.');
     }
   };
-  
+
+  const handlePlanSelection = async (plan) => {
+    try {
+      setLoading(true);
+      setSelectedPlan(plan);
+      
+      // Crear preferencia de pago
+      const preference = await createMercadoPagoPreference(
+        plan.id,
+        plan.name,
+        plan.price,
+        'pending' // userId pendiente hasta que se complete el registro
+      );
+
+      // Redirigir a la pantalla de pago
+      navigation.navigate('Payment', {
+        preference,
+        onPaymentComplete: () => {
+          setPaymentCompleted(true);
+          Alert.alert('¡Éxito!', 'Pago completado. Ahora puedes completar tu registro.');
+        }
+      });
+      
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+      console.error('Error al seleccionar plan:', error);
+      Alert.alert('Error', 'No se pudo procesar la selección del plan. Por favor intenta nuevamente.');
+    }
+  };
+
   const getIndustryIcon = (industryId) => {
     const industry = INDUSTRY_TYPES.find(item => item.id === industryId);
     return industry ? industry.icon : 'storefront-outline';
   };
-  
+
   const renderIndustrySelector = () => (
     <View style={styles.inputContainer}>
       <Ionicons name={getIndustryIcon(industry)} size={20} color="#666" style={styles.inputIcon} />
@@ -182,25 +182,13 @@ export default function RegisterScreen({ navigation }) {
       </Modal>
     </View>
   );
-  
-  const renderSubscriptionPlanSelector = () => (
-    <View style={styles.inputContainer}>
-      <Text style={styles.subscriptionPlanText}>Plan de suscripción:</Text>
-      <TouchableOpacity 
-        style={styles.subscriptionPlanSelector}
-        onPress={() => navigation.navigate('SubscriptionPlans', { setSubscriptionPlan })}
-      >
-        <Text style={styles.subscriptionPlanSelectorText}>{subscriptionPlan}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-  
+
   return (
     <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       
       <View style={[styles.background, { backgroundColor: '#28a745' }]} />
       
@@ -291,14 +279,43 @@ export default function RegisterScreen({ navigation }) {
           {/* Tipo de Industria */}
           {renderIndustrySelector()}
           
-          {/* Plan de Suscripción */}
-          {renderSubscriptionPlanSelector()}
-          
+          {/* Selección de plan */}
+          <View style={styles.planSection}>
+            <Text style={styles.sectionTitle}>Selecciona un Plan</Text>
+            <Text style={styles.sectionSubtitle}>Debes elegir un plan para continuar</Text>
+            
+            {SUBSCRIPTION_PLANS.map((plan) => (
+              <TouchableOpacity
+                key={plan.id}
+                style={[
+                  styles.planCard,
+                  selectedPlan?.id === plan.id && styles.selectedPlanCard
+                ]}
+                onPress={() => handlePlanSelection(plan)}
+              >
+                <View style={styles.planHeader}>
+                  <Text style={styles.planName}>{plan.name}</Text>
+                  <Text style={styles.planPrice}>${plan.price} ARS</Text>
+                </View>
+                <Text style={styles.planDescription}>{plan.description}</Text>
+                {selectedPlan?.id === plan.id && paymentCompleted && (
+                  <View style={styles.paidBadge}>
+                    <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                    <Text style={styles.paidText}>Pago completado</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+
           {/* Botón de Registro */}
           <TouchableOpacity 
-            style={styles.registerButton}
+            style={[
+              styles.registerButton,
+              (!selectedPlan || !paymentCompleted) && styles.disabledButton
+            ]}
             onPress={handleRegister}
-            disabled={loading}
+            disabled={loading || !selectedPlan || !paymentCompleted}
           >
             {loading ? (
               <ActivityIndicator color="white" />
@@ -394,19 +411,63 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
-  subscriptionPlanText: {
-    fontSize: 16,
-    color: '#333',
-    marginRight: 10,
+  planSection: {
+    marginTop: 20,
+    marginBottom: 20,
   },
-  subscriptionPlanSelector: {
-    flex: 1,
-    height: 50,
-    justifyContent: 'center',
-  },
-  subscriptionPlanSelectorText: {
-    fontSize: 16,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#333',
+    marginBottom: 5,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 15,
+  },
+  planCard: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  selectedPlanCard: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
+  planHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  planName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  planPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  planDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  paidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  paidText: {
+    marginLeft: 5,
+    color: colors.success,
+    fontWeight: '500',
   },
   registerButton: {
     backgroundColor: '#28a745',
@@ -415,6 +476,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 10,
+  },
+  disabledButton: {
+    backgroundColor: '#ccc',
   },
   registerButtonText: {
     color: 'white',

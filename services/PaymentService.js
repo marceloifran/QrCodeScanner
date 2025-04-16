@@ -24,8 +24,6 @@ const SUBSCRIPTION_KEY = '@subscription_info';
  */
 export const createMercadoPagoPreference = async (planId, planName, price, userId) => {
   try {
-    console.log(`Creando preferencia para plan: ${planId}, precio: ${price}`);
-    
     // Verificar si el plan existe
     const planDetails = SUBSCRIPTION_PLANS.find(plan => plan.id === planId);
     if (!planDetails) {
@@ -158,12 +156,6 @@ export const hasActiveSubscription = async () => {
 // Función para actualizar el plan del usuario en Firestore
 export const updateUserPlan = async (userId, planId, expirationDate) => {
   try {
-    console.log(`Actualizando plan: ${planId} para usuario: ${userId}`);
-    
-    if (!userId) {
-      throw new Error('ID de usuario no proporcionado');
-    }
-    
     // Verificar si el usuario ya tiene un plan activo
     const currentStatus = await checkSubscriptionStatus(userId);
     if (currentStatus.active && currentStatus.planId === planId) {
@@ -339,8 +331,6 @@ export const renewSubscription = async (userId, planId) => {
  */
 export const verifyPayment = async (paymentId, preferenceId) => {
   try {
-    console.log(`Verificando pago ID: ${paymentId}`);
-    
     const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
       method: 'GET',
       headers: {
@@ -354,7 +344,6 @@ export const verifyPayment = async (paymentId, preferenceId) => {
     }
     
     const paymentData = await response.json();
-    console.log('Datos del pago:', JSON.stringify(paymentData));
     
     // Verificar el estado del pago
     const status = paymentData.status;
