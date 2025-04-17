@@ -178,7 +178,7 @@ export default function EditProductScreen({ navigation, route }) {
   };
 
   const handleUpdateProduct = async () => {
-    if (!validateForm()) return;
+    if (!validateForm() || loading) return;
 
     setLoading(true);
     try {
@@ -204,6 +204,38 @@ export default function EditProductScreen({ navigation, route }) {
       }
 
       const productRef = doc(db, "products", productId);
+
+      // Convertir la fecha de vencimiento a Timestamp para Firestore
+      let expiryDateTimestamp = null;
+      if (expiryDate) {
+        try {
+          const validDate = new Date(expiryDate);
+          if (!isNaN(validDate.getTime())) {
+            expiryDateTimestamp = {
+              seconds: Math.floor(validDate.getTime() / 1000),
+              nanoseconds: 0,
+            };
+          } else {
+            // Si la fecha no es válida, usar la fecha actual + 1 día
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            expiryDateTimestamp = {
+              seconds: Math.floor(tomorrow.getTime() / 1000),
+              nanoseconds: 0,
+            };
+          }
+        } catch (error) {
+          console.error("Error al convertir fecha:", error);
+          // Usar fecha actual + 1 día como fallback
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          expiryDateTimestamp = {
+            seconds: Math.floor(tomorrow.getTime() / 1000),
+            nanoseconds: 0,
+          };
+        }
+      }
+
       await updateDoc(productRef, {
         name,
         barcode,
@@ -215,7 +247,7 @@ export default function EditProductScreen({ navigation, route }) {
           : null,
         category,
         updatedAt: serverTimestamp(),
-        expiryDate: expiryDate || null,
+        expiryDate: expiryDateTimestamp,
         notifyExpiry: notifyExpiry,
       });
 
@@ -251,7 +283,10 @@ export default function EditProductScreen({ navigation, route }) {
         [
           {
             text: "OK",
-            onPress: () => navigation.goBack(),
+            onPress: () => {
+              // Usar la navegación anidada correcta para volver a la lista de productos
+              navigation.navigate("Main", { screen: "ProductList" });
+            },
           },
         ]
       );
@@ -413,9 +448,12 @@ export default function EditProductScreen({ navigation, route }) {
   };
 
   const handleDateChange = (event, selectedDate) => {
-    setShowDatePicker(Platform.OS === "ios");
+    // Ocultar el selector de fecha en Android después de seleccionar
+    setShowDatePicker(false);
 
+    // Si se seleccionó una fecha, actualizar el estado
     if (selectedDate) {
+      console.log("Fecha seleccionada:", selectedDate);
       setExpiryDate(selectedDate);
     }
   };
@@ -499,9 +537,10 @@ export default function EditProductScreen({ navigation, route }) {
         {/* Renderiza el selector solo en Android/iOS */}
         {showDatePicker && Platform.OS !== "web" && (
           <DateTimePicker
+            testID="dateTimePicker"
             value={expiryDate || new Date()}
             mode="date"
-            display="default"
+            display={Platform.OS === "ios" ? "spinner" : "default"}
             onChange={handleDateChange}
             minimumDate={new Date()}
           />

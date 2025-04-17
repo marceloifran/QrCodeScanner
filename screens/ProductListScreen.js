@@ -71,9 +71,9 @@ export default function ProductListScreen({ navigation, route }) {
 
       // Resetear el filtro de categoría si la categoría seleccionada ya no existe
       if (selectedCategory) {
-        const categoryExists = industryCategories && industryCategories.some(
-          (cat) => cat.id === selectedCategory
-        );
+        const categoryExists =
+          industryCategories &&
+          industryCategories.some((cat) => cat.id === selectedCategory);
         if (!categoryExists) {
           setSelectedCategory(null);
         }
@@ -165,10 +165,23 @@ export default function ProductListScreen({ navigation, route }) {
       .filter((product) => {
         // Filtro de búsqueda
         if (searchQuery) {
-          const searchLower = searchQuery.toLowerCase();
-          const nameMatch = product.name.toLowerCase().includes(searchLower);
-          const barcodeMatch = product.barcode && product.barcode.includes(searchQuery);
-          
+          // Normalizar la búsqueda (eliminar acentos)
+          const normalizedSearchText = searchQuery
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+
+          // Normalizar el nombre del producto (eliminar acentos)
+          const normalizedName = (product.name || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+
+          const normalizedBarcode = (product.barcode || "").toLowerCase();
+
+          const nameMatch = normalizedName.includes(normalizedSearchText);
+          const barcodeMatch = normalizedBarcode.includes(normalizedSearchText);
+
           if (!nameMatch && !barcodeMatch) {
             return false;
           }
@@ -323,13 +336,13 @@ export default function ProductListScreen({ navigation, route }) {
       const categoryName = getCategoryName(item.category, categories);
 
       let stockColor = colors.success;
-      let stockBgColor = 'rgba(46, 204, 113, 0.1)';
+      let stockBgColor = "rgba(46, 204, 113, 0.1)";
       if (item.stock <= 0) {
         stockColor = colors.error;
-        stockBgColor = 'rgba(231, 76, 60, 0.1)';
+        stockBgColor = "rgba(231, 76, 60, 0.1)";
       } else if (item.stock <= 5) {
         stockColor = colors.warning;
-        stockBgColor = 'rgba(241, 196, 15, 0.1)';
+        stockBgColor = "rgba(241, 196, 15, 0.1)";
       }
 
       return (
@@ -354,7 +367,9 @@ export default function ProductListScreen({ navigation, route }) {
 
               <View style={styles.stockContainer}>
                 <Text style={styles.stockLabel}>Stock</Text>
-                <View style={[styles.stockBadge, { backgroundColor: stockBgColor }]}>
+                <View
+                  style={[styles.stockBadge, { backgroundColor: stockBgColor }]}
+                >
                   <Text style={[styles.productStock, { color: stockColor }]}>
                     {item.stock} unid.
                   </Text>
@@ -459,11 +474,11 @@ export default function ProductListScreen({ navigation, route }) {
             onPress={() => setSelectedCategory(null)}
           >
             <View style={styles.categoryChipContent}>
-              <Ionicons 
-                name="apps-outline" 
-                size={16} 
-                color={!selectedCategory ? "#fff" : "#666"} 
-                style={styles.categoryIcon} 
+              <Ionicons
+                name="apps-outline"
+                size={16}
+                color={!selectedCategory ? "#fff" : "#666"}
+                style={styles.categoryIcon}
               />
               <Text
                 style={[
@@ -488,11 +503,11 @@ export default function ProductListScreen({ navigation, route }) {
               onPress={() => setSelectedCategory(category.id)}
             >
               <View style={styles.categoryChipContent}>
-                <Ionicons 
-                  name="folder-outline" 
-                  size={16} 
-                  color={selectedCategory === category.id ? "#fff" : "#666"} 
-                  style={styles.categoryIcon} 
+                <Ionicons
+                  name="folder-outline"
+                  size={16}
+                  color={selectedCategory === category.id ? "#fff" : "#666"}
+                  style={styles.categoryIcon}
                 />
                 <Text
                   style={[
@@ -521,7 +536,12 @@ export default function ProductListScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <View style={styles.searchContainer}>
-        <Ionicons name="search-outline" size={20} color="#666" style={styles.searchIcon} />
+        <Ionicons
+          name="search-outline"
+          size={20}
+          color="#666"
+          style={styles.searchIcon}
+        />
         <TextInput
           style={styles.searchInput}
           placeholder="Buscar productos..."
@@ -530,47 +550,68 @@ export default function ProductListScreen({ navigation, route }) {
         />
         {searchQuery ? (
           <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Ionicons name="close-circle" size={20} color="#666" style={styles.searchClearIcon} />
+            <Ionicons
+              name="close-circle"
+              size={20}
+              color="#666"
+              style={styles.searchClearIcon}
+            />
           </TouchableOpacity>
         ) : null}
       </View>
 
       <View style={styles.filtersRow}>
         {renderCategoryFilters()}
-        
+
         <View style={styles.filterButtons}>
           <TouchableOpacity
-            style={[styles.filterButton, lowStockFilter && styles.activeFilterButton]}
+            style={[
+              styles.filterButton,
+              lowStockFilter && styles.activeFilterButton,
+            ]}
             onPress={() => {
               setLowStockFilter(!lowStockFilter);
               setZeroStockFilter(false);
               setSelectedCategory(null);
             }}
           >
-            <Ionicons 
-              name="alert-circle-outline" 
-              size={16} 
-              color={lowStockFilter ? "#fff" : "#666"} 
+            <Ionicons
+              name="alert-circle-outline"
+              size={16}
+              color={lowStockFilter ? "#fff" : "#666"}
             />
-            <Text style={[styles.filterButtonText, lowStockFilter && styles.activeFilterText]}>
+            <Text
+              style={[
+                styles.filterButtonText,
+                lowStockFilter && styles.activeFilterText,
+              ]}
+            >
               Stock bajo
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
-            style={[styles.filterButton, zeroStockFilter && styles.activeFilterButton]}
+            style={[
+              styles.filterButton,
+              zeroStockFilter && styles.activeFilterButton,
+            ]}
             onPress={() => {
               setZeroStockFilter(!zeroStockFilter);
               setLowStockFilter(false);
               setSelectedCategory(null);
             }}
           >
-            <Ionicons 
-              name="close-circle-outline" 
-              size={16} 
-              color={zeroStockFilter ? "#fff" : "#666"} 
+            <Ionicons
+              name="close-circle-outline"
+              size={16}
+              color={zeroStockFilter ? "#fff" : "#666"}
             />
-            <Text style={[styles.filterButtonText, zeroStockFilter && styles.activeFilterText]}>
+            <Text
+              style={[
+                styles.filterButtonText,
+                zeroStockFilter && styles.activeFilterText,
+              ]}
+            >
               Sin stock
             </Text>
           </TouchableOpacity>
@@ -590,11 +631,16 @@ export default function ProductListScreen({ navigation, route }) {
         </View>
       ) : loadError ? (
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={40} color={colors.error} style={styles.errorIcon} />
+          <Ionicons
+            name="alert-circle"
+            size={40}
+            color={colors.error}
+            style={styles.errorIcon}
+          />
           <Text style={styles.errorText}>
             Ocurrió un error al cargar los datos
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.retryButton}
             onPress={() => {
               setLoadError(false);
@@ -607,9 +653,14 @@ export default function ProductListScreen({ navigation, route }) {
         </View>
       ) : filteredProducts.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Ionicons name="basket-outline" size={60} color="#ccc" style={styles.emptyIcon} />
+          <Ionicons
+            name="basket-outline"
+            size={60}
+            color="#ccc"
+            style={styles.emptyIcon}
+          />
           <Text style={styles.emptyText}>No se encontraron productos</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.addButton}
             onPress={() => navigation.navigate("AddProduct")}
           >

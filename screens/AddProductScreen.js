@@ -329,10 +329,32 @@ export default function AddProductScreen({ navigation }) {
       // Convertir la fecha de vencimiento a Timestamp para Firestore
       let expiryDateTimestamp = null;
       if (expiryDate) {
-        expiryDateTimestamp = {
-          seconds: Math.floor(expiryDate.getTime() / 1000),
-          nanoseconds: 0,
-        };
+        try {
+          const validDate = new Date(expiryDate);
+          if (!isNaN(validDate.getTime())) {
+            expiryDateTimestamp = {
+              seconds: Math.floor(validDate.getTime() / 1000),
+              nanoseconds: 0,
+            };
+          } else {
+            // Si la fecha no es válida, usar la fecha actual + 1 día
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            expiryDateTimestamp = {
+              seconds: Math.floor(tomorrow.getTime() / 1000),
+              nanoseconds: 0,
+            };
+          }
+        } catch (error) {
+          console.error("Error al convertir fecha:", error);
+          // Usar fecha actual + 1 día como fallback
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          expiryDateTimestamp = {
+            seconds: Math.floor(tomorrow.getTime() / 1000),
+            nanoseconds: 0,
+          };
+        }
       }
 
       // Crear objeto de producto con campos básicos
@@ -403,8 +425,8 @@ export default function AddProductScreen({ navigation }) {
             setExpiryDate(new Date());
             setNotifyExpiry(false);
 
-            // Navegar de vuelta a la lista de productos
-            navigation.navigate("ProductList");
+            // Navegar de vuelta a la lista de productos con la estructura correcta de navegación anidada
+            navigation.navigate("Main", { screen: "ProductList" });
           },
         },
       ]);
@@ -417,12 +439,19 @@ export default function AddProductScreen({ navigation }) {
   };
 
   const handleDateChange = (event, selectedDate) => {
-    setShowDatePicker(Platform.OS === "ios" ? true : false);
+    // Ocultar el selector de fecha en Android después de seleccionar
+    setShowDatePicker(false);
 
     if (selectedDate) {
       if (currentDateField === "expiryDate") {
+        console.log("Fecha de vencimiento seleccionada:", selectedDate);
         setExpiryDate(selectedDate);
       } else if (currentDateField) {
+        console.log(
+          "Fecha personalizada seleccionada para campo:",
+          currentDateField,
+          selectedDate
+        );
         setCustomFields({
           ...customFields,
           [currentDateField]: selectedDate,
@@ -836,7 +865,7 @@ export default function AddProductScreen({ navigation }) {
           testID="dateTimePicker"
           value={expiryDate || new Date()}
           mode="date"
-          display="default"
+          display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={handleDateChange}
           minimumDate={new Date()}
         />

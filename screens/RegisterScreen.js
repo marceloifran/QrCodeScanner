@@ -11,7 +11,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Modal,
   StatusBar,
 } from "react-native";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
@@ -19,45 +18,15 @@ import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
-import { getCustomFieldsForIndustry } from "../utils/categoryUtils";
-
-// Lista de industrias disponibles
-// Tipo de negocio fijo: supermercado/almacén
-const INDUSTRY_TYPE = {
-  id: "grocery",
-  name: "Supermercado/Almacén",
-  icon: "cart-outline",
-};
-
-// Lista de planes de suscripción
-const SUBSCRIPTION_PLANS = [
-  {
-    id: "base",
-    name: "Plan Básico",
-    price: 0,
-    description: "Plan básico con características limitadas",
-  },
-  {
-    id: "premium",
-    name: "Plan Premium",
-    price: 100,
-    description: "Plan premium con características avanzadas",
-  },
-];
 
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [businessName, setBusinessName] = useState("");
-  // Tipo de negocio fijo: supermercado/almacén
-  const industry = "grocery";
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [showIndustryModal, setShowIndustryModal] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState(null);
-  const [paymentCompleted, setPaymentCompleted] = useState(false);
 
   const handleRegister = async () => {
     try {
@@ -69,14 +38,6 @@ export default function RegisterScreen({ navigation }) {
 
       if (password !== confirmPassword) {
         Alert.alert("Error", "Las contraseñas no coinciden");
-        return;
-      }
-
-      if (!selectedPlan || !paymentCompleted) {
-        Alert.alert(
-          "Error",
-          "Debes seleccionar y pagar un plan para registrarte"
-        );
         return;
       }
 
@@ -99,12 +60,18 @@ export default function RegisterScreen({ navigation }) {
       await setDoc(doc(db, "users", user.uid), {
         email,
         businessName,
-        industry,
-        planId: selectedPlan.id,
+        industry: "grocery", // Valor por defecto
         createdAt: new Date(),
-        subscriptionStatus: "active",
+        subscriptionStatus: "active", // Plan gratuito por defecto
         subscriptionStartDate: new Date(),
-        subscriptionEndDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 días
+        subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 año
+      });
+
+      // Guardar información del negocio
+      await setDoc(doc(db, "businessInfo", user.uid), {
+        name: businessName,
+        createdAt: new Date(),
+        industry: "grocery",
       });
 
       setLoading(false);
@@ -112,66 +79,23 @@ export default function RegisterScreen({ navigation }) {
     } catch (error) {
       setLoading(false);
       console.error("Error al registrar:", error);
-      Alert.alert(
-        "Error",
-        "Hubo un error al crear la cuenta. Por favor intenta nuevamente."
-      );
+
+      let errorMessage =
+        "Hubo un error al crear la cuenta. Por favor intenta nuevamente.";
+
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage =
+          "Este correo electrónico ya está en uso. Por favor utiliza otro.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "El correo electrónico no es válido.";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage =
+          "La contraseña es demasiado débil. Utiliza al menos 6 caracteres.";
+      }
+
+      Alert.alert("Error", errorMessage);
     }
   };
-
-  const handlePlanSelection = async (plan) => {
-    try {
-      setLoading(true);
-      setSelectedPlan(plan);
-
-      // Crear preferencia de pago
-      const preference = await createMercadoPagoPreference(
-        plan.id,
-        plan.name,
-        plan.price,
-        "pending" // userId pendiente hasta que se complete el registro
-      );
-
-      // Redirigir a la pantalla de pago
-      navigation.navigate("Payment", {
-        preference,
-        onPaymentComplete: () => {
-          setPaymentCompleted(true);
-          Alert.alert(
-            "¡Éxito!",
-            "Pago completado. Ahora puedes completar tu registro."
-          );
-        },
-      });
-
-      setLoading(false);
-    } catch (error) {
-      setLoading(false);
-      console.error("Error al seleccionar plan:", error);
-      Alert.alert(
-        "Error",
-        "No se pudo procesar la selección del plan. Por favor intenta nuevamente."
-      );
-    }
-  };
-
-  const getIndustryIcon = (industryId) => {
-    const industry = INDUSTRY_TYPE;
-    return industry ? industry.icon : "storefront-outline";
-  };
-
-  // Reemplazo del selector de industria por un componente informativo
-  const renderIndustryInfo = () => (
-    <View style={styles.inputContainer}>
-      <Ionicons
-        name="cart-outline"
-        size={20}
-        color="#666"
-        style={styles.inputIcon}
-      />
-      <Text style={styles.industryInfoText}>Supermercado/Almacén</Text>
-    </View>
-  );
 
   return (
     <KeyboardAvoidingView
@@ -180,7 +104,7 @@ export default function RegisterScreen({ navigation }) {
     >
       <StatusBar barStyle="dark-content" />
 
-      <View style={[styles.background, { backgroundColor: "#28a745" }]} />
+      <View style={[styles.background, { backgroundColor: colors.primary }]} />
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.logoContainer}>
@@ -288,52 +212,11 @@ export default function RegisterScreen({ navigation }) {
             />
           </View>
 
-          {/* Tipo de Industria */}
-          {renderIndustryInfo()}
-
-          {/* Selección de plan */}
-          <View style={styles.planSection}>
-            <Text style={styles.sectionTitle}>Selecciona un Plan</Text>
-            <Text style={styles.sectionSubtitle}>
-              Debes elegir un plan para continuar
-            </Text>
-
-            {SUBSCRIPTION_PLANS.map((plan) => (
-              <TouchableOpacity
-                key={plan.id}
-                style={[
-                  styles.planCard,
-                  selectedPlan?.id === plan.id && styles.selectedPlanCard,
-                ]}
-                onPress={() => handlePlanSelection(plan)}
-              >
-                <View style={styles.planHeader}>
-                  <Text style={styles.planName}>{plan.name}</Text>
-                  <Text style={styles.planPrice}>${plan.price} ARS</Text>
-                </View>
-                <Text style={styles.planDescription}>{plan.description}</Text>
-                {selectedPlan?.id === plan.id && paymentCompleted && (
-                  <View style={styles.paidBadge}>
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={20}
-                      color={colors.success}
-                    />
-                    <Text style={styles.paidText}>Pago completado</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))}
-          </View>
-
           {/* Botón de Registro */}
           <TouchableOpacity
-            style={[
-              styles.registerButton,
-              (!selectedPlan || !paymentCompleted) && styles.disabledButton,
-            ]}
+            style={styles.registerButton}
             onPress={handleRegister}
-            disabled={loading || !selectedPlan || !paymentCompleted}
+            disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="white" />
@@ -420,83 +303,13 @@ const styles = StyleSheet.create({
   passwordToggle: {
     padding: 10,
   },
-  industrySelector: {
-    flex: 1,
-    height: 50,
-    justifyContent: "center",
-  },
-  industrySelectorText: {
-    fontSize: 16,
-    color: "#333",
-  },
-  planSection: {
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 5,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 15,
-  },
-  planCard: {
-    backgroundColor: "white",
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  selectedPlanCard: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-  },
-  planHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  planName: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  planPrice: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: colors.primary,
-  },
-  planDescription: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 5,
-  },
-  paidBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
-  },
-  paidText: {
-    marginLeft: 5,
-    color: colors.success,
-    fontWeight: "500",
-  },
   registerButton: {
-    backgroundColor: "#28a745",
+    backgroundColor: colors.primary,
     borderRadius: 10,
     height: 50,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 10,
-  },
-  disabledButton: {
-    backgroundColor: "#ccc",
+    marginTop: 20,
   },
   registerButtonText: {
     color: "white",
@@ -520,44 +333,5 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontSize: 14,
     textDecorationLine: "underline",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 20,
-    width: "80%",
-    maxHeight: "80%",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#28a745",
-    marginBottom: 15,
-    textAlign: "center",
-  },
-  industryOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  industryOptionIcon: {
-    marginRight: 15,
-  },
-  industryOptionText: {
-    flex: 1,
-    fontSize: 16,
-    color: "#333",
-  },
-  industryInfoText: {
-    fontSize: 16,
-    color: "#333",
   },
 });

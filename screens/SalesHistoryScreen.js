@@ -25,6 +25,8 @@ export default function SalesHistoryScreen({ navigation }) {
   const [editedItems, setEditedItems] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [selectedStartDate, setSelectedStartDate] = useState(null);
+  const [selectedEndDate, setSelectedEndDate] = useState(null);
 
   const { sales, loading, refreshSales } = useSales(filter);
 
@@ -70,28 +72,49 @@ export default function SalesHistoryScreen({ navigation }) {
 
   // Filtrar ventas por búsqueda
   const filteredSales = useMemo(() => {
-    if (!searchQuery) return sales;
+    if (!sales || sales.length === 0) return [];
 
-    const searchLower = searchQuery.toLowerCase();
     return sales.filter((sale) => {
-      // Buscar en items
-      const hasProduct = sale.items.some((item) =>
-        item.name.toLowerCase().includes(searchLower)
-      );
+      // Filtro de búsqueda
+      if (searchQuery) {
+        const normalizedSearchText = searchQuery
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
 
-      // Buscar en total o fecha
-      const matchesTotal = sale.total.toString().includes(searchLower);
+        // Normalizar el nombre del cliente (eliminar acentos)
+        const normalizedCustomerName = (sale.customerName || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
 
-      // Verificar si date existe y tiene la propiedad seconds
-      let matchesDate = false;
-      if (sale.date && typeof sale.date === "object") {
-        const dateStr = sale.date.toLocaleDateString();
-        matchesDate = dateStr.includes(searchLower);
+        // Buscar coincidencia en nombre del cliente
+        const customerMatch =
+          normalizedCustomerName.includes(normalizedSearchText);
+
+        // Buscar coincidencia en productos vendidos
+        const productsMatch = sale.products.some((product) => {
+          const normalizedProductName = (product.name || "")
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "");
+          return normalizedProductName.includes(normalizedSearchText);
+        });
+
+        if (!customerMatch && !productsMatch) {
+          return false;
+        }
       }
 
-      return hasProduct || matchesTotal || matchesDate;
+      // Filtros por fecha
+      if (selectedStartDate && selectedEndDate) {
+        const saleDate = new Date(sale.date);
+        return saleDate >= selectedStartDate && saleDate <= selectedEndDate;
+      }
+
+      return true;
     });
-  }, [sales, searchQuery]);
+  }, [sales, searchQuery, selectedStartDate, selectedEndDate]);
 
   // Abrir modal de edición
   const handleEditSale = (sale) => {
@@ -320,7 +343,30 @@ export default function SalesHistoryScreen({ navigation }) {
         ))}
       </View>
 
-      <View style={styles.statsContainer}>{renderTopProducts()}</View>
+      <View style={styles.statsContainer}>
+        {/* Sumatoria total de ventas según el filtro */}
+        <View style={styles.statsSection}>
+          <Text style={styles.statsSectionTitle}>
+            Total de Ventas (
+            {filter === "today"
+              ? "Hoy"
+              : filter === "week"
+              ? "Semana"
+              : filter === "month"
+              ? "Mes"
+              : "Todas"}
+            )
+          </Text>
+          <View style={styles.salesTotalContainer}>
+            <Text style={styles.salesTotalAmount}>
+              {formatPrice(
+                filteredSales.reduce((sum, sale) => sum + (sale.total || 0), 0)
+              )}
+            </Text>
+          </View>
+        </View>
+        {renderTopProducts()}
+      </View>
 
       {/* Lista de ventas */}
       {loading ? (
@@ -674,5 +720,15 @@ const styles = StyleSheet.create({
   noStatsText: {
     color: "#888",
     textAlign: "center",
+  },
+  salesTotalContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  salesTotalAmount: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: colors.primary,
   },
 });
