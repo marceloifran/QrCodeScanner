@@ -36,38 +36,31 @@ export const INDUSTRY_CATEGORIES = {
 };
 
 export const getCategoriesForIndustry = (industryType) => {
-  const industryCategories = {
-    grocery: [
-      { id: "lacteos", name: "Lácteos", icon: "nutrition-outline" },
-      { id: "carnes", name: "Carnes", icon: "restaurant-outline" },
-      { id: "fruits", name: "Frutas y Verduras", icon: "leaf-outline" },
-      { id: "bebidas", name: "Bebidas", icon: "wine-outline" },
-      { id: "panaderia", name: "Panadería", icon: "fast-food-outline" },
-      { id: "limpieza", name: "Limpieza", icon: "sparkles-outline" },
-      {
-        id: "cuidado_personal",
-        name: "Cuidado Personal",
-        icon: "body-outline",
-      },
-      { id: "higiene", name: "Higiene", icon: "water-outline" },
-      { id: "almacen", name: "Almacén", icon: "cube-outline" },
-      { id: "bazar", name: "Bazar", icon: "basket-outline" },
-      { id: "dulces", name: "Dulces", icon: "ice-cream-outline" },
-      { id: "snacks", name: "Snacks", icon: "pizza-outline" },
-      { id: "cigarrillos", name: "Cigarrillos", icon: "flame-outline" },
-      { id: "congelados", name: "Congelados", icon: "snow-outline" },
-      { id: "salsas", name: "Salsas", icon: "nutrition-outline" },
-      { id: "otros", name: "Otros", icon: "cube-outline" },
-    ],
-    clothing: [
-      { id: "shirts", name: "Camisas", icon: "shirt-outline" },
-      { id: "pants", name: "Pantalones", icon: "cut-outline" },
-      { id: "shoes", name: "Calzado", icon: "footsteps-outline" },
-      { id: "accessories", name: "Accesorios", icon: "watch-outline" },
-    ],
-  };
+  // Siempre devolver categorías de grocery (supermercado/almacén)
+  const groceryCategories = [
+    { id: "lacteos", name: "Lácteos", icon: "nutrition-outline" },
+    { id: "carnes", name: "Carnes", icon: "restaurant-outline" },
+    { id: "fruits", name: "Frutas y Verduras", icon: "leaf-outline" },
+    { id: "bebidas", name: "Bebidas", icon: "wine-outline" },
+    { id: "panaderia", name: "Panadería", icon: "fast-food-outline" },
+    { id: "limpieza", name: "Limpieza", icon: "sparkles-outline" },
+    {
+      id: "cuidado_personal",
+      name: "Cuidado Personal",
+      icon: "body-outline",
+    },
+    { id: "higiene", name: "Higiene", icon: "water-outline" },
+    { id: "almacen", name: "Almacén", icon: "cube-outline" },
+    { id: "bazar", name: "Bazar", icon: "basket-outline" },
+    { id: "dulces", name: "Dulces", icon: "ice-cream-outline" },
+    { id: "snacks", name: "Snacks", icon: "pizza-outline" },
+    { id: "cigarrillos", name: "Cigarrillos", icon: "flame-outline" },
+    { id: "congelados", name: "Congelados", icon: "snow-outline" },
+    { id: "salsas", name: "Salsas", icon: "nutrition-outline" },
+    { id: "otros", name: "Otros", icon: "cube-outline" },
+  ];
 
-  return industryCategories[industryType];
+  return groceryCategories;
 };
 
 // Función para obtener el nombre de una categoría por su ID

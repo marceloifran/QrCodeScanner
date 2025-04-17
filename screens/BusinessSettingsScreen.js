@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -8,26 +8,19 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Modal
-} from 'react-native';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase/config';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
-import { getCustomFieldsForIndustry } from '../utils/categoryUtils';
-
-const INDUSTRY_TYPES = [
-  { id: 'general', name: 'Tienda General', icon: 'storefront-outline' },
-  { id: 'grocery', name: 'Supermercado/Almacén', icon: 'cart-outline' },
-  { id: 'clothing', name: 'Tienda de Ropa', icon: 'shirt-outline' },
-];
+} from "react-native";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db, auth } from "../firebase/config";
+import { Ionicons } from "@expo/vector-icons";
+import { colors } from "../theme/colors";
+import { getCustomFieldsForIndustry } from "../utils/categoryUtils";
 
 export default function BusinessSettingsScreen({ navigation }) {
-  const [businessName, setBusinessName] = useState('');
-  const [industry, setIndustry] = useState('general');
+  const [businessName, setBusinessName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showIndustryModal, setShowIndustryModal] = useState(false);
+  // Tipo de negocio fijo: supermercado/almacén
+  const industry = "grocery";
 
   useEffect(() => {
     loadBusinessInfo();
@@ -36,19 +29,18 @@ export default function BusinessSettingsScreen({ navigation }) {
   const loadBusinessInfo = async () => {
     setLoading(true);
     try {
-      const businessInfoRef = doc(db, 'businessInfo', auth.currentUser.uid);
+      const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
       const businessInfoDoc = await getDoc(businessInfoRef);
 
       if (businessInfoDoc.exists()) {
         const data = businessInfoDoc.data();
-        setBusinessName(data.name || '');
-        setIndustry(data.industry || 'general');
+        setBusinessName(data.name || "");
       } else {
-        setBusinessName(auth.currentUser.displayName || '');
+        setBusinessName(auth.currentUser.displayName || "");
       }
     } catch (error) {
-      console.error('Error al cargar información del negocio:', error);
-      Alert.alert('Error', 'No se pudo cargar la información del negocio');
+      console.error("Error al cargar información del negocio:", error);
+      Alert.alert("Error", "No se pudo cargar la información del negocio");
     } finally {
       setLoading(false);
     }
@@ -56,51 +48,33 @@ export default function BusinessSettingsScreen({ navigation }) {
 
   const handleSave = async () => {
     if (!businessName) {
-      Alert.alert('Error', 'Por favor ingresa el nombre del negocio');
+      Alert.alert("Error", "Por favor ingresa el nombre del negocio");
       return;
     }
 
     setSaving(true);
     try {
-      const businessInfoRef = doc(db, 'businessInfo', auth.currentUser.uid);
-      const businessInfoDoc = await getDoc(businessInfoRef);
-      const currentIndustry = businessInfoDoc.exists() ? businessInfoDoc.data().industry : null;
-      const industryChanged = currentIndustry !== industry;
+      const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
 
-      await setDoc(businessInfoRef, {
-        name: businessName,
-        industry: industry,
-        updatedAt: new Date()
-      }, { merge: true });
-
-      if (industryChanged) {
-        const newCustomFields = getCustomFieldsForIndustry(industry);
-        const industryConfigRef = doc(db, 'industryConfig', auth.currentUser.uid);
-        await setDoc(industryConfigRef, {
+      await setDoc(
+        businessInfoRef,
+        {
+          name: businessName,
           industry: industry,
-          customFields: newCustomFields,
-          updatedAt: new Date()
-        });
+          updatedAt: new Date(),
+        },
+        { merge: true }
+      );
 
-        Alert.alert('Éxito', 'Información del negocio y configuración actualizada correctamente');
-
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Main' }],
-        });
-      } else {
-        Alert.alert('Éxito', 'Información del negocio actualizada correctamente');
-        navigation.goBack();
-      }
+      Alert.alert("Éxito", "Información del negocio actualizada correctamente");
+      navigation.goBack();
     } catch (error) {
-      console.error('Error al guardar información del negocio:', error);
-      Alert.alert('Error', 'No se pudo guardar la información del negocio');
+      console.error("Error al guardar información del negocio:", error);
+      Alert.alert("Error", "No se pudo guardar la información del negocio");
     } finally {
       setSaving(false);
     }
   };
-
-  const selectedIndustry = INDUSTRY_TYPES.find(item => item.id === industry);
 
   if (loading) {
     return (
@@ -117,7 +91,12 @@ export default function BusinessSettingsScreen({ navigation }) {
         <View style={styles.formGroup}>
           <Text style={styles.label}>Nombre del Negocio</Text>
           <View style={styles.inputContainer}>
-            <Ionicons name="storefront-outline" size={22} color={colors.text.secondary} style={styles.inputIcon} />
+            <Ionicons
+              name="storefront-outline"
+              size={22}
+              color={colors.text.secondary}
+              style={styles.inputIcon}
+            />
             <TextInput
               style={styles.input}
               value={businessName}
@@ -131,28 +110,16 @@ export default function BusinessSettingsScreen({ navigation }) {
           <Text style={styles.label}>Tipo de Negocio</Text>
           <View style={styles.inputContainer}>
             <Ionicons
-              name={selectedIndustry?.icon || 'storefront-outline'}
+              name="cart-outline"
               size={22}
               color={colors.text.secondary}
               style={styles.inputIcon}
             />
-            <TouchableOpacity
-              style={styles.industrySelector}
-              onPress={() => setShowIndustryModal(true)}
-            >
-              <Text style={styles.industrySelectorText}>
-                {selectedIndustry?.name || 'Seleccionar tipo de negocio'}
-              </Text>
-              <Ionicons name="chevron-down" size={20} color={colors.text.secondary} />
-            </TouchableOpacity>
+            <Text style={styles.industryText}>Supermercado/Almacén</Text>
           </View>
-        </View>
-
-        <View style={styles.infoContainer}>
-          <Ionicons name="information-circle-outline" size={24} color={colors.info} style={styles.infoIcon} />
-          <Text style={styles.infoText}>
-            Al cambiar el tipo de negocio, se actualizarán los campos personalizados para tus productos. 
-            Los datos existentes no se perderán, pero algunos campos podrían ocultarse según el tipo de negocio seleccionado.
+          <Text style={styles.industryInfo}>
+            Esta aplicación está optimizada para negocios tipo supermercado o
+            almacén.
           </Text>
         </View>
 
@@ -168,47 +135,6 @@ export default function BusinessSettingsScreen({ navigation }) {
           )}
         </TouchableOpacity>
       </View>
-
-      {/* Modal de selección de industria */}
-      <Modal
-        visible={showIndustryModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowIndustryModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowIndustryModal(false)}
-        >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Selecciona el tipo de negocio</Text>
-            <ScrollView>
-              {INDUSTRY_TYPES.map(item => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[
-                    styles.industryOption,
-                    industry === item.id && styles.selectedIndustryOption
-                  ]}
-                  onPress={() => {
-                    setIndustry(item.id);
-                    setShowIndustryModal(false);
-                  }}
-                >
-                  <View style={styles.industryIconContainer}>
-                    <Ionicons name={item.icon} size={24} color={colors.primary} />
-                  </View>
-                  <Text style={styles.industryOptionText}>{item.name}</Text>
-                  {industry === item.id && (
-                    <Ionicons name="checkmark" size={24} color={colors.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </ScrollView>
   );
 }
@@ -220,8 +146,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingText: {
     marginTop: 10,
@@ -240,8 +166,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: colors.surface,
     borderRadius: 10,
     borderWidth: 1,
@@ -254,22 +180,16 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    height: '100%',
+    height: "100%",
     fontSize: 16,
     color: colors.text.primary,
   },
-  infoContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#e1f5fe',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 20,
-  },
-  infoIcon: {
-    marginRight: 10,
-  },
-  infoText: {
+  industryText: {
     flex: 1,
+    fontSize: 16,
+    color: colors.text.primary,
+  },
+  industryInfo: {
     fontSize: 14,
     color: colors.text.secondary,
     lineHeight: 20,
@@ -278,65 +198,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 10,
     height: 55,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 10,
   },
   saveButtonText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
-    fontWeight: 'bold',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    width: '80%',
-    maxHeight: '80%',
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 20,
-  },
-  industryOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-  },
-  selectedIndustryOption: {
-    backgroundColor: 'rgba(40, 167, 69, 0.05)',
-    borderRadius: 8,
-  },
-  industryIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
-  },
-  industryOptionText: {
-    flex: 1,
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  industrySelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-  },
-  industrySelectorText: {
-    fontSize: 16,
-    color: colors.text.primary,
+    fontWeight: "bold",
   },
 });

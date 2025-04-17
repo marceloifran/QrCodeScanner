@@ -24,6 +24,7 @@ import {
   where,
   getDocs,
   serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebase/config";
 import { colors } from "../theme/colors";
@@ -75,7 +76,7 @@ export default function EditProductScreen({ navigation, route }) {
 
         // Cargar la industria del usuario
         const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
-        
+
         // Usar getDoc con manejo de errores mejorado
         let businessInfoDoc;
         try {
@@ -217,6 +218,32 @@ export default function EditProductScreen({ navigation, route }) {
         expiryDate: expiryDate || null,
         notifyExpiry: notifyExpiry,
       });
+
+      // Verificar si el producto necesita notificación por fecha de vencimiento
+      if (expiryDate && notifyExpiry) {
+        const daysUntilExpiration = Math.ceil(
+          (expiryDate - new Date()) / (1000 * 60 * 60 * 24)
+        );
+
+        // Si está por vencer en los próximos 15 días, registrarlo para notificaciones
+        if (daysUntilExpiration <= 15) {
+          const notificationData = {
+            productId,
+            productName: name,
+            expiryDate: expiryDateTimestamp,
+            notifyExpiry: true,
+            notificationCreated: new Date(),
+            userId: auth.currentUser.uid,
+          };
+
+          // Guardar en la colección de notificaciones
+          const notificationId = `expiry_${productId}`;
+          await setDoc(
+            doc(db, "productNotifications", notificationId),
+            notificationData
+          );
+        }
+      }
 
       Alert.alert(
         "Producto actualizado",

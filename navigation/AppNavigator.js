@@ -103,17 +103,17 @@ const AppNavigator = () => {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          headerBackTitle: ' ', // Espacio en blanco para iOS
+          headerBackTitle: " ", // Espacio en blanco para iOS
           headerBackTitleVisible: false, // Ocultar texto en iOS
-          headerTruncatedBackTitle: '', // Texto truncado en iOS
+          headerTruncatedBackTitle: "", // Texto truncado en iOS
           headerBackLabelVisible: false, // Para versiones más recientes de React Navigation
         }}
       >
         {user ? (
           <>
             <Stack.Screen name="Main" component={TabNavigator} />
-            <Stack.Screen 
-              name="AddProduct" 
+            <Stack.Screen
+              name="AddProduct"
               component={AddProductScreen}
               options={{
                 headerShown: true,
@@ -122,12 +122,12 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
-            <Stack.Screen 
-              name="EditProduct" 
+            <Stack.Screen
+              name="EditProduct"
               component={EditProductScreen}
               options={{
                 headerShown: true,
@@ -136,12 +136,12 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
-            <Stack.Screen 
-              name="ScanForStock" 
+            <Stack.Screen
+              name="ScanForStock"
               component={ScanForStockScreen}
               options={{
                 headerShown: true,
@@ -150,12 +150,12 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
-            <Stack.Screen 
-              name="NewCart" 
+            <Stack.Screen
+              name="NewCart"
               component={NewCartScreen}
               options={{
                 headerShown: true,
@@ -164,7 +164,7 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
@@ -178,7 +178,7 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
@@ -192,7 +192,7 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
@@ -206,7 +206,7 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
@@ -220,7 +220,7 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
@@ -234,7 +234,7 @@ const AppNavigator = () => {
                   backgroundColor: colors.primary,
                 },
                 headerTintColor: "#fff",
-                headerBackTitle: ' ',
+                headerBackTitle: " ",
                 headerBackTitleVisible: false,
               }}
             />
@@ -249,7 +249,7 @@ const AppNavigator = () => {
                     backgroundColor: colors.primary,
                   },
                   headerTintColor: "#fff",
-                  headerBackTitle: ' ',
+                  headerBackTitle: " ",
                   headerBackTitleVisible: false,
                 }}
               />
@@ -258,7 +258,10 @@ const AppNavigator = () => {
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen
+              name="ForgotPassword"
+              component={ForgotPasswordScreen}
+            />
             <Stack.Screen name="Register" component={RegisterScreen} />
           </>
         )}

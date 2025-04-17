@@ -36,7 +36,10 @@ import {
   getCategoriesForIndustry,
   getCustomFieldsForIndustry,
 } from "../utils/categoryUtils";
-import { verifyProductLimit, checkProductLimit } from "../utils/subscriptionUtils";
+import {
+  verifyProductLimit,
+  checkProductLimit,
+} from "../utils/subscriptionUtils";
 
 export default function AddProductScreen({ navigation }) {
   const [barcode, setBarcode] = useState("");
@@ -144,7 +147,7 @@ export default function AddProductScreen({ navigation }) {
 
         // Cargar la industria del usuario
         const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
-        
+
         // Usar getDoc con manejo de errores mejorado
         let businessInfoDoc;
         try {
@@ -235,20 +238,16 @@ export default function AddProductScreen({ navigation }) {
           // Obtener el resultado completo del checkProductLimit
           const result = await checkProductLimit(userId);
           setProductLimit(result);
-          
+
           // Si no puede añadir más productos, mostrar alerta
           if (!result.canAdd) {
-            Alert.alert(
-              "Límite de productos alcanzado",
-              result.message,
-              [
-                { 
-                  text: "Actualizar plan", 
-                  onPress: () => navigation.navigate("SubscriptionPlans") 
-                },
-                { text: "Entendido", style: "cancel" }
-              ]
-            );
+            Alert.alert("Límite de productos alcanzado", result.message, [
+              {
+                text: "Actualizar plan",
+                onPress: () => navigation.navigate("SubscriptionPlans"),
+              },
+              { text: "Entendido", style: "cancel" },
+            ]);
           }
         }
       } catch (error) {
@@ -319,6 +318,7 @@ export default function AddProductScreen({ navigation }) {
   const handleAddProduct = async () => {
     if (!validateForm()) return;
 
+    setLoading(true);
     try {
       // Verificar si el usuario puede agregar más productos según su plan
       const canAddProduct = await verifyProductLimit(navigation);
@@ -326,40 +326,13 @@ export default function AddProductScreen({ navigation }) {
         return; // La función verifyProductLimit ya muestra una alerta si es necesario
       }
 
-      setLoading(true);
-      // Si hay un código de barras, verificar si ya existe
-      if (barcode) {
-        const productsRef = collection(db, "products");
-        const q = query(
-          productsRef,
-          where("barcode", "==", barcode),
-          where("userId", "==", auth.currentUser.uid)
-        );
-        const querySnapshot = await getDocs(q);
-
-        if (!querySnapshot.empty) {
-          Alert.alert(
-            "Producto existente",
-            "Ya existe un producto con este código de barras. ¿Deseas actualizar su stock?",
-            [
-              {
-                text: "Cancelar",
-                style: "cancel",
-                onPress: () => setLoading(false),
-              },
-              {
-                text: "Actualizar",
-                onPress: async () => {
-                  setLoading(false);
-                  navigation.navigate("EditProduct", {
-                    productId: querySnapshot.docs[0].id,
-                  });
-                },
-              },
-            ]
-          );
-          return;
-        }
+      // Convertir la fecha de vencimiento a Timestamp para Firestore
+      let expiryDateTimestamp = null;
+      if (expiryDate) {
+        expiryDateTimestamp = {
+          seconds: Math.floor(expiryDate.getTime() / 1000),
+          nanoseconds: 0,
+        };
       }
 
       // Crear objeto de producto con campos básicos
@@ -376,12 +349,43 @@ export default function AddProductScreen({ navigation }) {
         userId: auth.currentUser.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        expiryDate: expiryDate || null,
+        expiryDate: expiryDateTimestamp,
         notifyExpiry: notifyExpiry,
-        industryType: industryType
+        industryType: industryType,
       };
 
-      await addDoc(collection(db, "products"), productData);
+      // Agregar campos personalizados si existen
+      if (Object.keys(customFields).length > 0) {
+        productData.customFields = customFields;
+      }
+
+      const docRef = await addDoc(collection(db, "products"), productData);
+
+      // Registrar notificación si es necesario
+      if (expiryDate && notifyExpiry) {
+        const daysUntilExpiration = Math.ceil(
+          (expiryDate - new Date()) / (1000 * 60 * 60 * 24)
+        );
+
+        // Si está por vencer en los próximos 15 días, registrarlo para notificaciones
+        if (daysUntilExpiration <= 15) {
+          const notificationData = {
+            productId: docRef.id,
+            productName: name,
+            expiryDate: expiryDateTimestamp,
+            notifyExpiry: true,
+            notificationCreated: new Date(),
+            userId: auth.currentUser.uid,
+          };
+
+          // Guardar en la colección de notificaciones
+          const notificationId = `expiry_${docRef.id}`;
+          await setDoc(
+            doc(db, "productNotifications", notificationId),
+            notificationData
+          );
+        }
+      }
 
       Alert.alert("Éxito", "Producto agregado correctamente", [
         {
@@ -450,10 +454,12 @@ export default function AddProductScreen({ navigation }) {
                   setShowCategoryModal(false);
                 }}
               >
-                <Ionicons 
-                  name={item.icon || "pricetag-outline"} 
-                  size={24} 
-                  color={category === item.id ? colors.primary : colors.text.primary} 
+                <Ionicons
+                  name={item.icon || "pricetag-outline"}
+                  size={24}
+                  color={
+                    category === item.id ? colors.primary : colors.text.primary
+                  }
                 />
                 <Text
                   style={[
@@ -563,9 +569,16 @@ export default function AddProductScreen({ navigation }) {
                         });
                       }}
                     >
-                      <Picker.Item label={`Seleccionar ${fieldName.toLowerCase()}`} value="" />
+                      <Picker.Item
+                        label={`Seleccionar ${fieldName.toLowerCase()}`}
+                        value=""
+                      />
                       {field.options.map((option, index) => (
-                        <Picker.Item key={index} label={option} value={option} />
+                        <Picker.Item
+                          key={index}
+                          label={option}
+                          value={option}
+                        />
                       ))}
                     </Picker>
                   </View>
@@ -721,7 +734,11 @@ export default function AddProductScreen({ navigation }) {
                 ? getCategoryName(category, categories)
                 : "Seleccionar categoría"}
             </Text>
-            <Ionicons name="chevron-down" size={20} color={colors.text.primary} />
+            <Ionicons
+              name="chevron-down"
+              size={20}
+              color={colors.text.primary}
+            />
           </TouchableOpacity>
         </View>
 
@@ -1097,10 +1114,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginTop: 5,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   picker: {
-    width: '100%',
+    width: "100%",
     height: 50,
     color: colors.text.primary,
   },
