@@ -14,6 +14,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { colors } from "../theme/colors";
+import { validateUserSubscription } from "../utils/subscriptionUtils";
 
 // Importar pantallas
 import LoginScreen from "../screens/LoginScreen";
@@ -37,6 +38,7 @@ import PaymentScreen from "../screens/PaymentScreen";
 import SubscriptionInfoScreen from "../screens/SubscriptionInfoScreen";
 // Importar pantalla de configuración de pruebas
 import TestingConfigScreen from "../screens/TestingConfigScreen";
+import EditExpiryDateScreen from "../screens/EditExpiryDateScreen";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -80,6 +82,37 @@ const NotificationBell = ({ navigation }) => {
   );
 };
 
+// Componente para verificar suscripción al cargar la aplicación
+const SubscriptionVerifier = () => {
+  useEffect(() => {
+    const verifySubscription = async () => {
+      try {
+        if (!auth.currentUser) return;
+
+        console.log("Verificando suscripción desde NavigationContainer...");
+        const result = await validateUserSubscription(auth.currentUser.uid);
+
+        if (!result.isValid) {
+          console.log("Suscripción no válida o expirada:", result.message);
+        } else {
+          console.log("Suscripción válida:", result.planId);
+        }
+      } catch (error) {
+        console.error("Error verificando suscripción:", error);
+      }
+    };
+
+    verifySubscription();
+
+    // Programar verificación periódica (cada 24 horas)
+    const interval = setInterval(verifySubscription, 24 * 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return null; // Este componente no renderiza nada visible
+};
+
 // Navegador principal de la aplicación
 const AppNavigator = () => {
   const [user, setUser] = useState(null);
@@ -100,6 +133,7 @@ const AppNavigator = () => {
 
   return (
     <NavigationContainer>
+      {user && <SubscriptionVerifier />}
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -254,6 +288,20 @@ const AppNavigator = () => {
                 }}
               />
             )}
+            <Stack.Screen
+              name="EditExpiryDate"
+              component={EditExpiryDateScreen}
+              options={{
+                headerShown: true,
+                title: "Actualizar Fecha de Vencimiento",
+                headerStyle: {
+                  backgroundColor: colors.primary,
+                },
+                headerTintColor: "#fff",
+                headerBackTitle: " ",
+                headerBackTitleVisible: false,
+              }}
+            />
           </>
         ) : (
           <>

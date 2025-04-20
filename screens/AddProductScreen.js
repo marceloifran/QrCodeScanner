@@ -230,25 +230,22 @@ export default function AddProductScreen({ navigation }) {
     loadCategoriesAndConfig();
   }, []);
 
+  // Añadir esta función para cargar el límite de productos al inicio
   useEffect(() => {
     const loadProductLimit = async () => {
       try {
-        if (auth.currentUser) {
-          const userId = auth.currentUser.uid;
-          // Obtener el resultado completo del checkProductLimit
-          const result = await checkProductLimit(userId);
-          setProductLimit(result);
+        if (!auth.currentUser) return;
 
-          // Si no puede añadir más productos, mostrar alerta
-          if (!result.canAdd) {
-            Alert.alert("Límite de productos alcanzado", result.message, [
-              {
-                text: "Actualizar plan",
-                onPress: () => navigation.navigate("SubscriptionPlans"),
-              },
-              { text: "Entendido", style: "cancel" },
-            ]);
-          }
+        console.log("Cargando límite de productos...");
+        const result = await checkProductLimit(auth.currentUser.uid);
+        console.log("Límite de productos:", result);
+
+        if (result) {
+          setProductLimit({
+            currentCount: result.currentCount || 0,
+            limit: result.limit || 50,
+            planId: result.planId || "base",
+          });
         }
       } catch (error) {
         console.error("Error al cargar límite de productos:", error);
@@ -256,7 +253,7 @@ export default function AddProductScreen({ navigation }) {
     };
 
     loadProductLimit();
-  }, [navigation]);
+  }, []);
 
   // Función para aplicar porcentaje al precio
   const applyPercentage = (percentage) => {
@@ -320,40 +317,46 @@ export default function AddProductScreen({ navigation }) {
 
     setLoading(true);
     try {
+      console.log("Verificando límite de productos");
       // Verificar si el usuario puede agregar más productos según su plan
       const canAddProduct = await verifyProductLimit(navigation);
+
       if (!canAddProduct) {
-        return; // La función verifyProductLimit ya muestra una alerta si es necesario
+        console.log("No se puede agregar más productos: límite alcanzado");
+        setLoading(false);
+        return; // La función verifyProductLimit ya muestra una alerta
+      }
+
+      // Verificar validez de la fecha de vencimiento
+      if (expiryDate && isNaN(expiryDate.getTime())) {
+        Alert.alert(
+          "Error",
+          "La fecha de vencimiento seleccionada no es válida"
+        );
+        setLoading(false);
+        return;
       }
 
       // Convertir la fecha de vencimiento a Timestamp para Firestore
       let expiryDateTimestamp = null;
       if (expiryDate) {
         try {
-          const validDate = new Date(expiryDate);
-          if (!isNaN(validDate.getTime())) {
-            expiryDateTimestamp = {
-              seconds: Math.floor(validDate.getTime() / 1000),
-              nanoseconds: 0,
-            };
-          } else {
-            // Si la fecha no es válida, usar la fecha actual + 1 día
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            expiryDateTimestamp = {
-              seconds: Math.floor(tomorrow.getTime() / 1000),
-              nanoseconds: 0,
-            };
-          }
-        } catch (error) {
-          console.error("Error al convertir fecha:", error);
-          // Usar fecha actual + 1 día como fallback
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
+          // Crear una nueva fecha para evitar problemas de referencia
+          const validDate = new Date(expiryDate.getTime());
+          console.log(
+            "Guardando fecha de vencimiento:",
+            validDate.toISOString()
+          );
+
           expiryDateTimestamp = {
-            seconds: Math.floor(tomorrow.getTime() / 1000),
+            seconds: Math.floor(validDate.getTime() / 1000),
             nanoseconds: 0,
           };
+        } catch (error) {
+          console.error("Error al convertir fecha:", error);
+          Alert.alert("Error", "No se pudo procesar la fecha de vencimiento");
+          setLoading(false);
+          return;
         }
       }
 
@@ -385,12 +388,16 @@ export default function AddProductScreen({ navigation }) {
 
       // Registrar notificación si es necesario
       if (expiryDate && notifyExpiry) {
+        const currentDate = new Date();
         const daysUntilExpiration = Math.ceil(
-          (expiryDate - new Date()) / (1000 * 60 * 60 * 24)
+          (expiryDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)
         );
 
         // Si está por vencer en los próximos 15 días, registrarlo para notificaciones
         if (daysUntilExpiration <= 15) {
+          console.log(
+            `Creando notificación: Producto vence en ${daysUntilExpiration} días`
+          );
           const notificationData = {
             productId: docRef.id,
             productName: name,
@@ -405,6 +412,10 @@ export default function AddProductScreen({ navigation }) {
           await setDoc(
             doc(db, "productNotifications", notificationId),
             notificationData
+          );
+        } else {
+          console.log(
+            `No se crea notificación: Producto vence en ${daysUntilExpiration} días (>15)`
           );
         }
       }
@@ -439,24 +450,39 @@ export default function AddProductScreen({ navigation }) {
   };
 
   const handleDateChange = (event, selectedDate) => {
-    // Ocultar el selector de fecha en Android después de seleccionar
+    // Primero ocultamos el picker de fecha
     setShowDatePicker(false);
 
+    // Verificar que selectedDate no sea null o undefined
     if (selectedDate) {
-      if (currentDateField === "expiryDate") {
-        console.log("Fecha de vencimiento seleccionada:", selectedDate);
-        setExpiryDate(selectedDate);
-      } else if (currentDateField) {
-        console.log(
-          "Fecha personalizada seleccionada para campo:",
-          currentDateField,
-          selectedDate
+      // Verificar que la fecha sea válida
+      if (!isNaN(selectedDate.getTime())) {
+        console.log("Fecha seleccionada:", selectedDate.toISOString());
+
+        // Asignar la fecha al campo correspondiente
+        if (currentDateField === "expiryDate" || currentDateField === null) {
+          // Para el caso principal de fecha de expiración
+          console.log("Asignando fecha de vencimiento:", selectedDate);
+          setExpiryDate(selectedDate);
+        } else if (currentDateField) {
+          // Para campos personalizados
+          console.log(
+            `Asignando fecha a campo personalizado: ${currentDateField}`
+          );
+          setCustomFields({
+            ...customFields,
+            [currentDateField]: selectedDate,
+          });
+        }
+      } else {
+        console.error("Error: La fecha seleccionada no es válida");
+        Alert.alert(
+          "Error",
+          "La fecha seleccionada no es válida. Por favor, intenta nuevamente."
         );
-        setCustomFields({
-          ...customFields,
-          [currentDateField]: selectedDate,
-        });
       }
+    } else {
+      console.log("No se seleccionó ninguna fecha");
     }
   };
 
@@ -775,7 +801,10 @@ export default function AddProductScreen({ navigation }) {
           <Text style={styles.label}>Fecha de Vencimiento (opcional)</Text>
           <TouchableOpacity
             style={styles.dateSelector}
-            onPress={() => setShowDatePicker(true)}
+            onPress={() => {
+              setCurrentDateField("expiryDate");
+              setShowDatePicker(true);
+            }}
           >
             <Text style={styles.dateText}>
               {expiryDate.toLocaleDateString()}

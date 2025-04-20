@@ -203,36 +203,38 @@ export default function EditProductScreen({ navigation, route }) {
         }
       }
 
+      // Verificar validez de la fecha de vencimiento
+      if (expiryDate && isNaN(expiryDate.getTime())) {
+        Alert.alert(
+          "Error",
+          "La fecha de vencimiento seleccionada no es válida"
+        );
+        setLoading(false);
+        return;
+      }
+
       const productRef = doc(db, "products", productId);
 
       // Convertir la fecha de vencimiento a Timestamp para Firestore
       let expiryDateTimestamp = null;
       if (expiryDate) {
         try {
-          const validDate = new Date(expiryDate);
-          if (!isNaN(validDate.getTime())) {
-            expiryDateTimestamp = {
-              seconds: Math.floor(validDate.getTime() / 1000),
-              nanoseconds: 0,
-            };
-          } else {
-            // Si la fecha no es válida, usar la fecha actual + 1 día
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            expiryDateTimestamp = {
-              seconds: Math.floor(tomorrow.getTime() / 1000),
-              nanoseconds: 0,
-            };
-          }
-        } catch (error) {
-          console.error("Error al convertir fecha:", error);
-          // Usar fecha actual + 1 día como fallback
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
+          // Crear una nueva fecha para evitar problemas de referencia
+          const validDate = new Date(expiryDate.getTime());
+          console.log(
+            "Guardando fecha de vencimiento:",
+            validDate.toISOString()
+          );
+
           expiryDateTimestamp = {
-            seconds: Math.floor(tomorrow.getTime() / 1000),
+            seconds: Math.floor(validDate.getTime() / 1000),
             nanoseconds: 0,
           };
+        } catch (error) {
+          console.error("Error al convertir fecha:", error);
+          Alert.alert("Error", "No se pudo procesar la fecha de vencimiento");
+          setLoading(false);
+          return;
         }
       }
 
@@ -253,12 +255,20 @@ export default function EditProductScreen({ navigation, route }) {
 
       // Verificar si el producto necesita notificación por fecha de vencimiento
       if (expiryDate && notifyExpiry) {
+        const currentDate = new Date();
         const daysUntilExpiration = Math.ceil(
-          (expiryDate - new Date()) / (1000 * 60 * 60 * 24)
+          (expiryDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)
         );
+
+        // ID de la notificación para referencia
+        const notificationId = `expiry_${productId}`;
+        const notificationRef = doc(db, "productNotifications", notificationId);
 
         // Si está por vencer en los próximos 15 días, registrarlo para notificaciones
         if (daysUntilExpiration <= 15) {
+          console.log(
+            `Creando notificación: Producto vence en ${daysUntilExpiration} días`
+          );
           const notificationData = {
             productId,
             productName: name,
@@ -269,11 +279,39 @@ export default function EditProductScreen({ navigation, route }) {
           };
 
           // Guardar en la colección de notificaciones
-          const notificationId = `expiry_${productId}`;
-          await setDoc(
-            doc(db, "productNotifications", notificationId),
-            notificationData
+          await setDoc(notificationRef, notificationData);
+        } else {
+          console.log(
+            `No se crea notificación: Producto vence en ${daysUntilExpiration} días (>15)`
           );
+
+          // Intentar eliminar notificación existente si hay
+          try {
+            const notificationDoc = await getDoc(notificationRef);
+            if (notificationDoc.exists()) {
+              await deleteDoc(notificationRef);
+              console.log(
+                "Notificación eliminada porque el producto ya no está próximo a vencer"
+              );
+            }
+          } catch (error) {
+            console.error("Error al intentar eliminar la notificación:", error);
+          }
+        }
+      } else if (!notifyExpiry) {
+        // Si el usuario ha desactivado las notificaciones, eliminar la notificación si existe
+        const notificationId = `expiry_${productId}`;
+        const notificationRef = doc(db, "productNotifications", notificationId);
+        try {
+          const notificationDoc = await getDoc(notificationRef);
+          if (notificationDoc.exists()) {
+            await deleteDoc(notificationRef);
+            console.log(
+              "Notificación eliminada porque el usuario desactivó las notificaciones"
+            );
+          }
+        } catch (error) {
+          console.error("Error al intentar eliminar la notificación:", error);
         }
       }
 

@@ -9,7 +9,14 @@ import {
   Alert,
   Dimensions,
 } from "react-native";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
 import { db, auth } from "../firebase/config";
 import { colors } from "../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,11 +33,22 @@ export default function NotificationsScreen({ navigation }) {
 
   useEffect(() => {
     loadNotifications();
-  }, []);
+
+    // Agregar un listener para cuando la pantalla vuelva a estar activa
+    const unsubscribe = navigation.addListener("focus", () => {
+      // Cuando volvemos a esta pantalla, recargamos las notificaciones
+      loadNotifications();
+    });
+
+    // Limpiar el listener cuando se desmonte el componente
+    return unsubscribe;
+  }, [navigation]);
 
   const loadNotifications = async () => {
     setLoading(true);
     try {
+      console.log("Cargando notificaciones...");
+
       // Cargar notificaciones de stock bajo
       const productQuery = query(
         collection(db, "products"),
@@ -61,30 +79,77 @@ export default function NotificationsScreen({ navigation }) {
       // Cargar notificaciones de vencimiento de la colección productNotifications
       const notificationsQuery = query(
         collection(db, "productNotifications"),
-        where("userId", "==", auth.currentUser.uid),
-        where("notifyExpiry", "==", true)
+        where("userId", "==", auth.currentUser.uid)
       );
       const notificationsSnapshot = await getDocs(notificationsQuery);
       const expirationNotifications = [];
       const currentDate = new Date();
+      const deleteTasks = []; // Para almacenar promesas de eliminación
 
       notificationsSnapshot.docs.forEach((doc) => {
         const notification = doc.data();
-        if (notification.expiryDate) {
+
+        // Verificar que sea una notificación de vencimiento
+        if (!notification.expiryDate || notification.notifyExpiry === false) {
+          // Si la notificación no tiene fecha de vencimiento o notifyExpiry es false,
+          // programamos su eliminación
+          deleteTasks.push(deleteDoc(doc.ref));
+          return;
+        }
+
+        try {
           // Convertir la fecha de vencimiento si es un timestamp de Firestore
           let expirationDate;
           if (notification.expiryDate.toDate) {
             expirationDate = notification.expiryDate.toDate();
           } else if (notification.expiryDate.seconds) {
             expirationDate = new Date(notification.expiryDate.seconds * 1000);
-          } else {
+          } else if (typeof notification.expiryDate === "string") {
             expirationDate = new Date(notification.expiryDate);
+          } else {
+            console.warn(
+              "Formato de fecha de vencimiento no reconocido:",
+              notification.expiryDate
+            );
+            // Programar eliminación de notificación inválida
+            deleteTasks.push(deleteDoc(doc.ref));
+            return;
+          }
+
+          // Verificar que la fecha sea válida
+          if (isNaN(expirationDate.getTime())) {
+            console.warn(
+              "Fecha de vencimiento inválida:",
+              notification.expiryDate
+            );
+            // Programar eliminación de notificación inválida
+            deleteTasks.push(deleteDoc(doc.ref));
+            return;
           }
 
           const daysUntilExpiration = Math.ceil(
             (expirationDate - currentDate) / (1000 * 60 * 60 * 24)
           );
 
+          // Asegurar que la fecha de notificación sea válida
+          let notificationDate;
+          if (notification.notificationCreated) {
+            if (notification.notificationCreated.toDate) {
+              notificationDate = notification.notificationCreated.toDate();
+            } else if (notification.notificationCreated.seconds) {
+              notificationDate = new Date(
+                notification.notificationCreated.seconds * 1000
+              );
+            } else if (notification.notificationCreated instanceof Date) {
+              notificationDate = notification.notificationCreated;
+            } else {
+              notificationDate = new Date();
+            }
+          } else {
+            notificationDate = new Date();
+          }
+
+          // Solo mostrar notificaciones para productos que vencen en menos de 15 días
           if (daysUntilExpiration <= 15) {
             expirationNotifications.push({
               id: doc.id,
@@ -93,22 +158,54 @@ export default function NotificationsScreen({ navigation }) {
                 daysUntilExpiration <= 0
                   ? `El producto "${notification.productName}" ha vencido.`
                   : `El producto "${notification.productName}" vencerá en ${daysUntilExpiration} días.`,
-              date: notification.notificationCreated || new Date(),
+              date: notificationDate,
               type: "expiration",
               productId: notification.productId,
               expirationDate: expirationDate,
               daysUntilExpiration,
             });
+          } else {
+            // Si ya no está dentro del rango de notificación, programar eliminación
+            console.log(
+              `Eliminando notificación fuera de rango: ${daysUntilExpiration} días`
+            );
+            deleteTasks.push(deleteDoc(doc.ref));
           }
+        } catch (error) {
+          console.error("Error procesando notificación:", error, notification);
+          // En caso de error, programar eliminación de notificación problemática
+          deleteTasks.push(deleteDoc(doc.ref));
         }
       });
 
-      setNotifications({
-        lowStock: lowStockNotifications.sort((a, b) => b.date - a.date),
-        expiration: expirationNotifications.sort(
-          (a, b) => a.daysUntilExpiration - b.daysUntilExpiration
-        ),
+      // Ejecutar todas las eliminaciones de notificaciones obsoletas o inválidas
+      if (deleteTasks.length > 0) {
+        console.log(
+          `Eliminando ${deleteTasks.length} notificaciones obsoletas o inválidas`
+        );
+        await Promise.all(deleteTasks);
+      }
+
+      // Ordenar por fecha (las más recientes primero para stock bajo)
+      const sortedLowStock = lowStockNotifications.sort((a, b) => {
+        const dateA = a.date instanceof Date ? a.date : new Date();
+        const dateB = b.date instanceof Date ? b.date : new Date();
+        return dateB - dateA;
       });
+
+      // Ordenar por días hasta vencimiento (los más próximos primero)
+      const sortedExpiration = expirationNotifications.sort(
+        (a, b) => a.daysUntilExpiration - b.daysUntilExpiration
+      );
+
+      setNotifications({
+        lowStock: sortedLowStock,
+        expiration: sortedExpiration,
+      });
+
+      console.log(
+        `Cargadas ${sortedLowStock.length} notificaciones de stock bajo y ${sortedExpiration.length} de vencimiento`
+      );
     } catch (error) {
       console.error("Error cargando notificaciones:", error);
       Alert.alert("Error", "No se pudieron cargar las notificaciones");
@@ -118,7 +215,40 @@ export default function NotificationsScreen({ navigation }) {
   };
 
   const handleNotificationPress = (notification) => {
-    navigation.navigate("EditProduct", { productId: notification.productId });
+    if (notification.type === "expiration") {
+      // Para notificaciones de vencimiento, navegar a pantalla de edición especializada
+      navigation.navigate("EditExpiryDate", {
+        productId: notification.productId,
+        productName: notification.message.split('"')[1], // Extraer nombre del producto
+        expiryDate: notification.expirationDate,
+      });
+    } else {
+      // Para otras notificaciones (stock bajo), ir a edición normal
+      navigation.navigate("EditProduct", { productId: notification.productId });
+    }
+  };
+
+  const handleDeleteNotification = async (notification) => {
+    try {
+      if (notification.type === "expiration") {
+        // Para notificaciones de vencimiento, eliminar la notificación
+        const notificationId = notification.id;
+        await deleteDoc(doc(db, "productNotifications", notificationId));
+
+        // Actualizar la lista de notificaciones localmente
+        setNotifications((prev) => ({
+          ...prev,
+          expiration: prev.expiration.filter(
+            (item) => item.id !== notification.id
+          ),
+        }));
+
+        Alert.alert("Éxito", "La notificación ha sido eliminada");
+      }
+    } catch (error) {
+      console.error("Error al eliminar notificación:", error);
+      Alert.alert("Error", "No se pudo eliminar la notificación");
+    }
   };
 
   const renderNotificationItem = ({ item }) => (
@@ -147,22 +277,25 @@ export default function NotificationsScreen({ navigation }) {
           {item.title}
         </Text>
         <Text style={styles.notificationMessage}>{item.message}</Text>
-        <Text style={styles.notificationDate}>
-          {item.date.toLocaleDateString("es-AR", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </Text>
+        <Text style={styles.notificationDate}>{formatDate(item.date)}</Text>
       </View>
-      <TouchableOpacity
-        style={styles.arrowIcon}
-        onPress={() => handleNotificationPress(item)}
-      >
-        <Ionicons name="chevron-forward" size={24} color="#666" />
-      </TouchableOpacity>
+
+      <View style={styles.actionButtons}>
+        {item.type === "expiration" && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeleteNotification(item)}
+          >
+            <Ionicons name="close-circle" size={22} color="#ff6b6b" />
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.arrowIcon}
+          onPress={() => handleNotificationPress(item)}
+        >
+          <Ionicons name="chevron-forward" size={24} color="#666" />
+        </TouchableOpacity>
+      </View>
     </TouchableOpacity>
   );
 
@@ -355,6 +488,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#666",
   },
+  actionButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  deleteButton: {
+    padding: 5,
+    marginRight: 5,
+  },
   arrowIcon: {
     justifyContent: "center",
     paddingLeft: 8,
@@ -372,3 +513,36 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
+
+// Añadir esta función para formatear fechas de manera segura
+const formatDate = (dateValue) => {
+  try {
+    if (!dateValue) return "Fecha no disponible";
+
+    let date;
+    if (dateValue instanceof Date) {
+      date = dateValue;
+    } else if (dateValue.toDate) {
+      // Es un timestamp de Firestore
+      date = dateValue.toDate();
+    } else if (dateValue.seconds) {
+      // Es un timestamp en formato objeto { seconds, nanoseconds }
+      date = new Date(dateValue.seconds * 1000);
+    } else if (typeof dateValue === "string") {
+      date = new Date(dateValue);
+    } else {
+      return "Fecha inválida";
+    }
+
+    return date.toLocaleDateString("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (error) {
+    console.error("Error formatting date:", error, dateValue);
+    return "Error en fecha";
+  }
+};

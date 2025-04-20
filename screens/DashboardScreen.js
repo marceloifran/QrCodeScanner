@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -10,6 +10,8 @@ import {
   Alert,
   StatusBar,
   SafeAreaView,
+  Modal,
+  Image,
 } from "react-native";
 import {
   collection,
@@ -23,144 +25,15 @@ import {
   setDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebase/config";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { formatPrice } from "../utils/formatters";
 import { getCategoriesForIndustry } from "../utils/categoryUtils";
-import Svg, { Circle } from "react-native-svg";
-
-// Componente para gráfico circular simple
-const PieChart = ({ data, size = 150, strokeWidth = 25, chartColors }) => {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const total = data.reduce((sum, item) => sum + item.value, 0);
-
-  let currentAngle = 0;
-
-  return (
-    <View style={{ width: size, height: size }}>
-      <View
-        style={{
-          width: size,
-          height: size,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        {data.map((item, index) => {
-          if (item.value === 0) return null;
-
-          const percentage = item.value / total;
-          const strokeDasharray = `${circumference * percentage} ${
-            circumference * (1 - percentage)
-          }`;
-          const rotateAngle = currentAngle;
-          currentAngle += percentage * 360;
-
-          return (
-            <View
-              key={index}
-              style={{
-                position: "absolute",
-                width: size,
-                height: size,
-                transform: [{ rotate: `${rotateAngle}deg` }],
-              }}
-            >
-              <Svg width={size} height={size}>
-                <Circle
-                  cx={size / 2}
-                  cy={size / 2}
-                  r={radius}
-                  stroke={
-                    item.color ||
-                    (chartColors
-                      ? chartColors[index % chartColors.length]
-                      : `hsl(${index * 45}, 70%, 60%)`)
-                  }
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={strokeDasharray}
-                  strokeDashoffset={circumference * 0.25}
-                  strokeLinecap="round"
-                  fill="transparent"
-                />
-              </Svg>
-            </View>
-          );
-        })}
-        <View
-          style={{
-            position: "absolute",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 20,
-              fontWeight: "bold",
-              color: colors.text.primary,
-            }}
-          >
-            {total}
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.text.secondary }}>
-            Total
-          </Text>
-        </View>
-      </View>
-    </View>
-  );
-};
-
-// Componente para la leyenda del gráfico
-const ChartLegend = ({ data, chartColors }) => {
-  return (
-    <View style={{ marginTop: 15 }}>
-      {data.map((item, index) => (
-        <View
-          key={index}
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: 8,
-          }}
-        >
-          <View
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 6,
-              backgroundColor:
-                item.color ||
-                (chartColors
-                  ? chartColors[index % chartColors.length]
-                  : `hsl(${index * 45}, 70%, 60%)`),
-              marginRight: 8,
-            }}
-          />
-          <Text style={{ flex: 1, fontSize: 12, color: colors.text.primary }}>
-            {item.name}
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: "500",
-              color: colors.text.primary,
-            }}
-          >
-            {item.value} (
-            {(
-              (item.value / data.reduce((sum, d) => sum + d.value, 0)) *
-              100
-            ).toFixed(0)}
-            %)
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-};
+import {
+  isSubscriptionExpiringSoon,
+  getRemainingDaysMessage,
+} from "../constants/plans";
+import { validateUserSubscription } from "../utils/subscriptionUtils";
 
 export default function DashboardScreen({ navigation }) {
   const [recentSales, setRecentSales] = useState([]);
@@ -177,11 +50,16 @@ export default function DashboardScreen({ navigation }) {
   });
   const [notificationCount, setNotificationCount] = useState(0);
   const [categories, setCategories] = useState([]);
+  const [subscriptionExpiring, setSubscriptionExpiring] = useState(false);
+  const [expirationMessage, setExpirationMessage] = useState("");
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [needsSubscription, setNeedsSubscription] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
     checkNotifications();
     loadCategories();
+    checkSubscriptionStatus();
   }, []);
 
   useEffect(() => {
@@ -189,10 +67,44 @@ export default function DashboardScreen({ navigation }) {
       loadDashboardData();
       checkNotifications();
       loadCategories();
+      checkSubscriptionStatus();
     });
 
     return unsubscribe;
   }, [navigation]);
+
+  useEffect(() => {
+    const checkSubscriptionExpiration = async () => {
+      try {
+        if (!auth.currentUser) return;
+
+        // Obtener información del usuario
+        const userRef = doc(db, "businessInfo", auth.currentUser.uid);
+        const userDoc = await getDoc(userRef);
+
+        if (!userDoc.exists()) return;
+
+        const userData = userDoc.data();
+
+        if (userData.subscription && userData.subscription.expirationDate) {
+          const expirationDate = userData.subscription.expirationDate.seconds
+            ? new Date(userData.subscription.expirationDate.seconds * 1000)
+            : new Date(userData.subscription.expirationDate);
+
+          const isExpiring = isSubscriptionExpiringSoon(expirationDate);
+          setSubscriptionExpiring(isExpiring);
+
+          if (isExpiring) {
+            setExpirationMessage(getRemainingDaysMessage(expirationDate));
+          }
+        }
+      } catch (error) {
+        console.error("Error al verificar expiración de suscripción:", error);
+      }
+    };
+
+    checkSubscriptionExpiration();
+  }, []);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -310,22 +222,78 @@ export default function DashboardScreen({ navigation }) {
     if (!auth.currentUser) return;
 
     try {
-      // Obtener productos con stock bajo usando umbral personalizado
-      const q = query(
+      // 1. Obtener productos con stock bajo usando umbral personalizado
+      const productsQuery = query(
         collection(db, "products"),
         where("userId", "==", auth.currentUser.uid)
       );
-      const querySnapshot = await getDocs(q);
+      const productsSnapshot = await getDocs(productsQuery);
 
       // Filtrar usando el umbral personalizado de cada producto
-      const lowStockProducts = querySnapshot.docs.filter((doc) => {
+      const lowStockProducts = productsSnapshot.docs.filter((doc) => {
         const product = doc.data();
         const threshold = product.lowStockThreshold || 5;
         const stock = product.stock || 0;
         return stock <= threshold;
       });
 
-      setNotificationCount(lowStockProducts.length);
+      // 2. Obtener notificaciones de vencimiento
+      const notificationsQuery = query(
+        collection(db, "productNotifications"),
+        where("userId", "==", auth.currentUser.uid)
+      );
+      const notificationsSnapshot = await getDocs(notificationsQuery);
+
+      // Filtrar para obtener solo notificaciones válidas de vencimiento
+      const expirationNotifications = notificationsSnapshot.docs.filter(
+        (doc) => {
+          const notification = doc.data();
+          if (!notification.expiryDate || notification.notifyExpiry === false) {
+            return false;
+          }
+
+          try {
+            // Convertir la fecha de vencimiento
+            let expirationDate;
+            if (notification.expiryDate.toDate) {
+              expirationDate = notification.expiryDate.toDate();
+            } else if (notification.expiryDate.seconds) {
+              expirationDate = new Date(notification.expiryDate.seconds * 1000);
+            } else if (typeof notification.expiryDate === "string") {
+              expirationDate = new Date(notification.expiryDate);
+            } else {
+              return false;
+            }
+
+            // Verificar que la fecha sea válida
+            if (isNaN(expirationDate.getTime())) {
+              return false;
+            }
+
+            const currentDate = new Date();
+            const daysUntilExpiration = Math.ceil(
+              (expirationDate - currentDate) / (1000 * 60 * 60 * 24)
+            );
+
+            // Incluir solo las que vencen en menos de 15 días
+            return daysUntilExpiration <= 15;
+          } catch (error) {
+            console.error(
+              "Error al procesar notificación de vencimiento:",
+              error
+            );
+            return false;
+          }
+        }
+      );
+
+      // Actualizar contador con la suma de ambos tipos de notificaciones
+      const totalNotifications =
+        lowStockProducts.length + expirationNotifications.length;
+      console.log(
+        `Total notificaciones: ${totalNotifications} (${lowStockProducts.length} stock bajo, ${expirationNotifications.length} vencimiento)`
+      );
+      setNotificationCount(totalNotifications);
     } catch (error) {
       console.error("Error verificando notificaciones:", error);
     }
@@ -444,6 +412,78 @@ export default function DashboardScreen({ navigation }) {
     return colors[categoryId] || "#4CAF50"; // Color por defecto
   };
 
+  const getCategoryIcon = (categoryId) => {
+    // Iconos para diferentes categorías
+    const icons = {
+      general: "pricetag-outline",
+      offers: "flash-outline",
+      new: "star-outline",
+      popular: "trending-up-outline",
+      shirts: "shirt-outline",
+      pants: "browsers-outline",
+      shoes: "footsteps-outline",
+      accessories: "watch-outline",
+      medications: "medkit-outline",
+      vitamins: "fitness-outline",
+      dairy: "water-outline",
+      meat: "restaurant-outline",
+      fruits: "nutrition-outline",
+      beverages: "beer-outline",
+      smartphones: "phone-portrait-outline",
+      computers: "laptop-outline",
+      starters: "pizza-outline",
+      desserts: "ice-cream-outline",
+      bread: "fast-food-outline",
+      tools: "construct-outline",
+      skincare: "color-fill-outline",
+      makeup: "brush-outline",
+      fiction: "book-outline",
+      nonfiction: "newspaper-outline",
+    };
+
+    return icons[categoryId] || "pricetag-outline";
+  };
+
+  const formatSaleDate = (date) => {
+    try {
+      if (!date) return "";
+      const day = date.getDate().toString().padStart(2, "0");
+      const month = (date.getMonth() + 1).toString().padStart(2, "0");
+      const year = date.getFullYear().toString().slice(2);
+      const hours = date.getHours().toString().padStart(2, "0");
+      const minutes = date.getMinutes().toString().padStart(2, "0");
+      return `${day}/${month}/${year}, ${hours}:${minutes}`;
+    } catch (error) {
+      console.error("Error formateando fecha:", error);
+      return "";
+    }
+  };
+
+  const checkSubscriptionStatus = async () => {
+    if (!auth.currentUser) return;
+
+    try {
+      const subscriptionStatus = await validateUserSubscription(
+        auth.currentUser.uid
+      );
+
+      if (subscriptionStatus.requiresPlanSelection) {
+        setNeedsSubscription(true);
+        setShowSubscriptionModal(true);
+      } else {
+        setNeedsSubscription(false);
+        setShowSubscriptionModal(false);
+      }
+    } catch (error) {
+      console.error("Error al verificar suscripción:", error);
+    }
+  };
+
+  const navigateToPlans = () => {
+    setShowSubscriptionModal(false);
+    navigation.navigate("SubscriptionPlans");
+  };
+
   if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
@@ -456,6 +496,43 @@ export default function DashboardScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+
+      {/* Modal de Suscripción Requerida */}
+      <Modal
+        visible={showSubscriptionModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          // No permitimos cerrar el modal si necesita suscripción
+          if (!needsSubscription) {
+            setShowSubscriptionModal(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={60}
+              color={colors.primary}
+              style={styles.modalIcon}
+            />
+            <Text style={styles.modalTitle}>Suscripción Requerida</Text>
+            <Text style={styles.modalText}>
+              Necesitas seleccionar un plan para utilizar la aplicación. Los
+              planes se diferencian por la cantidad de productos que puedes
+              gestionar.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={navigateToPlans}
+            >
+              <Text style={styles.modalButtonText}>Ver Planes Disponibles</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -467,195 +544,134 @@ export default function DashboardScreen({ navigation }) {
           />
         }
       >
-        {/* Tarjetas de valor de inventario e ingresos totales */}
-        <View style={styles.valueCardsContainer}>
+        {/* Alerta de suscripción por expirar */}
+        {subscriptionExpiring && (
           <TouchableOpacity
-            style={styles.valueCard}
-            onPress={viewInventoryValue}
+            style={styles.expirationAlert}
+            onPress={() => navigation.navigate("SubscriptionPlans")}
           >
-            <View style={styles.valueTextContainer}>
-              <Text style={styles.valueLabel}>Valor de Inventario</Text>
-              <Text style={styles.valueNumber}>
-                {formatPrice(stats.inventoryValue)}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.valueIconContainer,
-                { backgroundColor: "#e8f5e9" },
-              ]}
-            >
-              <Ionicons name="cash-outline" size={24} color="#28a745" />
-            </View>
+            <Ionicons name="alert-circle-outline" size={24} color="#fff" />
+            <Text style={styles.expirationAlertText}>{expirationMessage}</Text>
+            <Ionicons name="chevron-forward" size={20} color="#fff" />
           </TouchableOpacity>
+        )}
 
-          <TouchableOpacity style={styles.valueCard} onPress={viewAllSales}>
-            <View style={styles.valueTextContainer}>
-              <Text style={styles.valueLabel}>Ingresos Totales</Text>
-              <Text style={styles.valueNumber}>
-                {formatPrice(stats.totalIncome)}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.valueIconContainer,
-                { backgroundColor: "#e3f2fd" },
-              ]}
-            >
-              <Ionicons name="trending-up-outline" size={24} color="#2196f3" />
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Sección de categorías con gráfico circular */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons
-                name="pie-chart-outline"
-                size={20}
-                color={colors.primary}
-                style={styles.sectionIcon}
-              />
-              <Text style={styles.sectionTitle}>
-                Distribución por Categorías
-              </Text>
+        {/* Valor de inventario */}
+        <TouchableOpacity style={styles.valueCard} onPress={viewInventoryValue}>
+          <Text style={styles.valueLabel}>Valor de Inventario</Text>
+          <View style={styles.valueContent}>
+            <Text style={styles.valueAmount}>
+              {formatPrice(stats.inventoryValue)}
+            </Text>
+            <View style={styles.valueIconContainer}>
+              <Ionicons name="cash-outline" size={20} color="#4CAF50" />
             </View>
           </View>
+        </TouchableOpacity>
 
-          <View style={styles.chartContainer}>
-            {categories &&
-            categories.length > 0 &&
-            Object.keys(categoryCounts).length > 0 ? (
-              <>
-                <View style={styles.chartRow}>
-                  <PieChart
-                    data={categories
-                      .filter((cat) => categoryCounts[cat.id] > 0)
-                      .map((category, index) => ({
-                        name: category.name,
-                        value: categoryCounts[category.id] || 0,
-                        color: getCategoryColor(category.id),
-                      }))
-                      .sort((a, b) => b.value - a.value)
-                      .slice(0, 5)}
-                    chartColors={[
-                      "#4CAF50",
-                      "#2196F3",
-                      "#FFC107",
-                      "#9C27B0",
-                      "#F44336",
+        {/* Ingresos totales */}
+        <TouchableOpacity style={styles.valueCard} onPress={viewAllSales}>
+          <Text style={styles.valueLabel}>Ingresos Totales</Text>
+          <View style={styles.valueContent}>
+            <Text style={styles.valueAmount}>
+              {formatPrice(stats.totalIncome)}
+            </Text>
+            <View style={styles.valueIconContainer}>
+              <Ionicons name="trending-up-outline" size={20} color="#2196F3" />
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Categorías */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Categorías</Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("ProductList")}
+            >
+              <Text style={styles.seeAllText}>Ver todas</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.categoriesContainer}>
+            {categories
+              .filter((cat) => categoryCounts[cat.id] > 0)
+              .sort(
+                (a, b) =>
+                  (categoryCounts[b.id] || 0) - (categoryCounts[a.id] || 0)
+              )
+              .slice(0, 3)
+              .map((category) => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={styles.categoryCard}
+                  onPress={() => navigateToCategory(category.id)}
+                >
+                  <View
+                    style={[
+                      styles.categoryIcon,
+                      { backgroundColor: getCategoryColor(category.id) },
                     ]}
-                    size={150}
-                  />
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.chartTitle}>Top 5 Categorías</Text>
-                    <ChartLegend
-                      data={categories
-                        .filter((cat) => categoryCounts[cat.id] > 0)
-                        .map((category) => ({
-                          name: category.name,
-                          value: categoryCounts[category.id] || 0,
-                          color: getCategoryColor(category.id),
-                        }))
-                        .sort((a, b) => b.value - a.value)
-                        .slice(0, 5)}
-                      chartColors={[
-                        "#4CAF50",
-                        "#2196F3",
-                        "#FFC107",
-                        "#9C27B0",
-                        "#F44336",
-                      ]}
-                    />
+                  >
+                    <Text style={styles.categoryIconText}>
+                      {categoryCounts[category.id] || 0}
+                    </Text>
                   </View>
-                </View>
-              </>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="pie-chart-outline" size={40} color="#e0e0e0" />
-                <Text style={styles.emptyText}>No hay datos suficientes</Text>
-              </View>
-            )}
+                  <Text style={styles.categoryName}>{category.name}</Text>
+                </TouchableOpacity>
+              ))}
           </View>
         </View>
 
-        {/* Sección de estado de inventario */}
-        <View style={styles.sectionCard}>
+        {/* Ventas Recientes */}
+        <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons
-                name="stats-chart-outline"
-                size={20}
-                color={colors.primary}
-                style={styles.sectionIcon}
-              />
-              <Text style={styles.sectionTitle}>Estado del Inventario</Text>
+            <Text style={styles.sectionTitle}>Ventas Recientes</Text>
+            <TouchableOpacity onPress={viewAllSales}>
+              <Text style={styles.seeAllText}>Ver todas</Text>
+            </TouchableOpacity>
+          </View>
+
+          {recentSales && recentSales.length > 0 ? (
+            <View style={styles.salesContainer}>
+              {recentSales.slice(0, 2).map((sale) => (
+                <TouchableOpacity
+                  key={sale.id}
+                  style={styles.saleCard}
+                  onPress={() =>
+                    navigation.navigate("SaleDetails", { saleId: sale.id })
+                  }
+                >
+                  <Text style={styles.saleDate}>
+                    {formatSaleDate(sale.date)}
+                  </Text>
+                  <Text style={styles.saleItems}>
+                    {sale.items
+                      ? `${sale.items.length} productos`
+                      : "1 productos"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </View>
-
-          <View style={styles.chartContainer}>
-            {stats.totalProducts > 0 ? (
-              <View style={styles.chartRow}>
-                <PieChart
-                  data={[
-                    {
-                      name: "Stock Normal",
-                      value: stats.totalProducts - stats.lowStockCount,
-                      color: "#4CAF50",
-                    },
-                    {
-                      name: "Stock Bajo",
-                      value: stats.lowStockCount,
-                      color: "#FF9800",
-                    },
-                  ]}
-                  size={150}
-                  chartColors={["#4CAF50", "#FF9800"]}
-                />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.chartTitle}>Estado de Productos</Text>
-                  <ChartLegend
-                    data={[
-                      {
-                        name: "Stock Normal",
-                        value: stats.totalProducts - stats.lowStockCount,
-                        color: "#4CAF50",
-                      },
-                      {
-                        name: "Stock Bajo",
-                        value: stats.lowStockCount,
-                        color: "#FF9800",
-                      },
-                    ]}
-                    chartColors={["#4CAF50", "#FF9800"]}
-                  />
-                </View>
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Ionicons
-                  name="stats-chart-outline"
-                  size={40}
-                  color="#e0e0e0"
-                />
-                <Text style={styles.emptyText}>No hay datos suficientes</Text>
-              </View>
-            )}
-          </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No hay ventas recientes</Text>
+            </View>
+          )}
         </View>
 
-        {/* Sección de productos con stock bajo */}
-        <View style={styles.sectionCard}>
+        {/* Productos con Stock Bajo */}
+        <View style={styles.sectionContainer}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={20}
-                color={colors.primary}
-                style={styles.sectionIcon}
-              />
               <Text style={styles.sectionTitle}>Productos con Stock Bajo</Text>
+              {stats.lowStockCount > 0 && (
+                <View style={styles.sectionBadge}>
+                  <Text style={styles.sectionBadgeText}>
+                    {stats.lowStockCount}
+                  </Text>
+                </View>
+              )}
             </View>
             <TouchableOpacity onPress={viewLowStockProducts}>
               <Text style={styles.seeAllText}>Ver todos</Text>
@@ -663,42 +679,41 @@ export default function DashboardScreen({ navigation }) {
           </View>
 
           {lowStockProducts && lowStockProducts.length > 0 ? (
-            lowStockProducts.map((product) => (
-              <TouchableOpacity
-                key={product.id}
-                style={styles.lowStockItem}
-                onPress={() =>
-                  navigation.navigate("EditProduct", { productId: product.id })
-                }
-              >
-                <View style={styles.lowStockInfo}>
-                  <Text style={styles.lowStockName}>{product.name}</Text>
-                  <View style={styles.stockIndicatorContainer}>
-                    <View
-                      style={[
-                        styles.stockIndicator,
-                        { backgroundColor: "#ffebee" },
-                      ]}
-                    />
-                    <Text style={styles.lowStockStock}>
-                      Stock: {product.stock}
-                    </Text>
+            <View style={styles.lowStockContainer}>
+              {lowStockProducts.slice(0, 3).map((product) => (
+                <TouchableOpacity
+                  key={product.id}
+                  style={styles.lowStockCard}
+                  onPress={() =>
+                    navigation.navigate("EditProduct", {
+                      productId: product.id,
+                    })
+                  }
+                >
+                  <View style={styles.lowStockInfo}>
+                    <Text style={styles.lowStockName}>{product.name}</Text>
+                    <View style={styles.stockIndicatorContainer}>
+                      <View
+                        style={[
+                          styles.stockIndicator,
+                          { backgroundColor: "#ffebee" },
+                        ]}
+                      />
+                      <Text style={styles.lowStockText}>
+                        Stock: {product.stock}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={20}
-                  color={colors.text.secondary}
-                />
-              </TouchableOpacity>
-            ))
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={colors.text.secondary}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
           ) : (
             <View style={styles.emptyContainer}>
-              <Ionicons
-                name="checkmark-circle-outline"
-                size={40}
-                color="#e0e0e0"
-              />
               <Text style={styles.emptyText}>
                 No hay productos con stock bajo
               </Text>
@@ -733,6 +748,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f5f7fa",
   },
+  notificationContainer: {
+    alignItems: "flex-end",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    zIndex: 10,
+  },
+  notificationButton: {
+    position: "relative",
+    padding: 6,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -749,49 +775,44 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 10,
     paddingBottom: 100, // Espacio para los botones flotantes
   },
-  valueCardsContainer: {
-    flexDirection: "column",
-    marginBottom: 16,
-    gap: 12,
-  },
   valueCard: {
-    flexDirection: "row",
     backgroundColor: "white",
     borderRadius: 16,
     padding: 16,
+    marginBottom: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  valueTextContainer: {
-    flex: 1,
   },
   valueLabel: {
     fontSize: 14,
     color: colors.text.secondary,
-    marginBottom: 6,
+    marginBottom: 8,
   },
-  valueNumber: {
-    fontSize: 20,
+  valueContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  valueAmount: {
+    fontSize: 22,
     fontWeight: "bold",
     color: colors.text.primary,
   },
   valueIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#f0f8f0",
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: 10,
   },
-  sectionCard: {
+  sectionContainer: {
     backgroundColor: "white",
     borderRadius: 16,
     padding: 16,
@@ -808,13 +829,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  sectionTitleContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  sectionIcon: {
-    marginRight: 8,
-  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "bold",
@@ -823,52 +837,52 @@ const styles = StyleSheet.create({
   seeAllText: {
     color: colors.primary,
     fontWeight: "500",
-    fontSize: 14,
   },
-  chartContainer: {
-    marginTop: 10,
-  },
-  chartRow: {
+  categoriesContainer: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
   },
-  chartTitle: {
-    fontSize: 16,
+  categoryCard: {
+    alignItems: "center",
+    width: "31%",
+  },
+  categoryIcon: {
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  categoryIconText: {
+    fontSize: 18,
     fontWeight: "bold",
-    color: colors.text.primary,
-    marginBottom: 10,
+    color: "white",
   },
-  saleItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
+  categoryName: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: colors.text.primary,
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  salesContainer: {
+    gap: 12,
+  },
+  saleCard: {
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
-  },
-  saleInfo: {
-    flex: 1,
+    paddingBottom: 12,
   },
   saleDate: {
     fontSize: 14,
+    fontWeight: "500",
     color: colors.text.primary,
     marginBottom: 4,
-    fontWeight: "500",
   },
   saleItems: {
     fontSize: 13,
     color: colors.text.secondary,
-  },
-  saleTotalContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  saleTotal: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: colors.primary,
-    marginRight: 8,
   },
   emptyContainer: {
     justifyContent: "center",
@@ -878,16 +892,18 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: "center",
     color: colors.text.secondary,
-    marginTop: 12,
     fontSize: 14,
   },
-  lowStockItem: {
+  lowStockContainer: {
+    gap: 8,
+  },
+  lowStockCard: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
     borderBottomWidth: 1,
     borderBottomColor: "#f0f0f0",
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   lowStockInfo: {
     flex: 1,
@@ -896,7 +912,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: colors.text.primary,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   stockIndicatorContainer: {
     flexDirection: "row",
@@ -906,9 +922,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: 8,
+    marginRight: 6,
+    backgroundColor: "#f44336",
   },
-  lowStockStock: {
+  lowStockText: {
     fontSize: 13,
     color: "#f44336",
   },
@@ -945,5 +962,94 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     marginLeft: 8,
+  },
+  sectionTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  sectionBadge: {
+    backgroundColor: "red",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+  sectionBadgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  expirationAlert: {
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  expirationAlertText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 10,
+    padding: 20,
+    width: "85%",
+    alignItems: "center",
+  },
+  modalIcon: {
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  modalText: {
+    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  modalButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    width: "100%",
+  },
+  modalButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  badgeContainer: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    backgroundColor: "red",
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  badgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
   },
 });

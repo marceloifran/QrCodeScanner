@@ -3,14 +3,14 @@ export const SUBSCRIPTION_PLANS = [
   {
     id: "base",
     name: "Plan Base",
-    price: 1999, // en pesos argentinos
-    priceDisplay: "$1.999",
-    productLimit: 300,
+    price: 15000, // en pesos argentinos
+    priceDisplay: "$15.000",
+    productLimit: 50,
     features: [
-      "Hasta 300 productos",
+      "Hasta 50 productos",
       "Escaneo de códigos QR",
-      "Gestión de inventario básica",
-      "Reportes básicos",
+      "Gestión de inventario",
+      "Acceso a todas las funcionalidades básicas",
     ],
     color: "#28a745",
     recommended: false,
@@ -18,15 +18,15 @@ export const SUBSCRIPTION_PLANS = [
   {
     id: "standard",
     name: "Plan Estándar",
-    price: 3499,
-    priceDisplay: "$3.499",
+    price: 25000,
+    priceDisplay: "$25.000",
     productLimit: 500,
     features: [
       "Hasta 500 productos",
       "Escaneo de códigos QR",
-      "Gestión de inventario avanzada",
-      "Reportes detallados",
-      "Exportación de datos",
+      "Gestión de inventario",
+      "Acceso a todas las funcionalidades básicas",
+      "Notificaciones avanzadas",
     ],
     color: "#007bff",
     recommended: true,
@@ -34,17 +34,16 @@ export const SUBSCRIPTION_PLANS = [
   {
     id: "premium",
     name: "Plan Premium",
-    price: 5999,
-    priceDisplay: "$5.999",
+    price: 30000,
+    priceDisplay: "$30.000",
     productLimit: Infinity,
     features: [
       "Productos ilimitados",
       "Escaneo de códigos QR",
-      "Gestión de inventario avanzada",
-      "Reportes detallados y personalizados",
-      "Exportación de datos",
+      "Gestión de inventario",
+      "Acceso a todas las funcionalidades básicas",
+      "Notificaciones avanzadas",
       "Soporte prioritario",
-      "Funciones exclusivas",
     ],
     color: "#6f42c1",
     recommended: false,
@@ -128,4 +127,51 @@ export const needsUpgrade = (currentCount, planId) => {
 
   // Si está cerca del límite (90% o más), sugerimos actualizar
   return currentCount >= plan.productLimit * 0.9;
+};
+
+// Function to check if a subscription is about to expire
+export const isSubscriptionExpiringSoon = (expirationDate) => {
+  if (!expirationDate) return false;
+
+  try {
+    const expDate = new Date(expirationDate);
+    const now = new Date();
+
+    // Calculate days difference
+    const diffTime = expDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // Return true if expiration is in less than 7 days
+    return diffDays <= 7 && diffDays > 0;
+  } catch (error) {
+    console.error("Error checking expiration date:", error);
+    return false;
+  }
+};
+
+// Function to format remaining days message
+export const getRemainingDaysMessage = (expirationDate) => {
+  if (!expirationDate) return "";
+
+  try {
+    const expDate = new Date(expirationDate);
+    const now = new Date();
+
+    // Calculate days difference
+    const diffTime = expDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return "Tu suscripción ha expirado";
+    } else if (diffDays === 0) {
+      return "Tu suscripción expira hoy";
+    } else if (diffDays === 1) {
+      return "Tu suscripción expira mañana";
+    } else {
+      return `Tu suscripción expira en ${diffDays} días`;
+    }
+  } catch (error) {
+    console.error("Error formatting expiration message:", error);
+    return "No se pudo determinar la fecha de expiración";
+  }
 };
