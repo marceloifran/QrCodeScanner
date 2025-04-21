@@ -375,7 +375,7 @@ export default function AddProductScreen({ navigation }) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         expiryDate: expiryDateTimestamp,
-        notifyExpiry: notifyExpiry,
+        notifyExpiry: true,
         industryType: industryType,
       };
 
@@ -386,8 +386,8 @@ export default function AddProductScreen({ navigation }) {
 
       const docRef = await addDoc(collection(db, "products"), productData);
 
-      // Registrar notificación si es necesario
-      if (expiryDate && notifyExpiry) {
+      // Registrar notificación para vencimiento
+      if (expiryDate) {
         const currentDate = new Date();
         const daysUntilExpiration = Math.ceil(
           (expiryDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)
@@ -415,7 +415,7 @@ export default function AddProductScreen({ navigation }) {
           );
         } else {
           console.log(
-            `No se crea notificación: Producto vence en ${daysUntilExpiration} días (>15)`
+            `No se crea notificación inmediata: Producto vence en ${daysUntilExpiration} días (>15)`
           );
         }
       }
@@ -434,7 +434,6 @@ export default function AddProductScreen({ navigation }) {
             setLowStockThreshold("");
             setCategory("");
             setExpiryDate(new Date());
-            setNotifyExpiry(false);
 
             // Navegar de vuelta a la lista de productos con la estructura correcta de navegación anidada
             navigation.navigate("Main", { screen: "ProductList" });
@@ -798,7 +797,7 @@ export default function AddProductScreen({ navigation }) {
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={styles.label}>Fecha de Vencimiento (opcional)</Text>
+          <Text style={styles.label}>Fecha de Vencimiento </Text>
           <TouchableOpacity
             style={styles.dateSelector}
             onPress={() => {
@@ -815,30 +814,6 @@ export default function AddProductScreen({ navigation }) {
               color={colors.text.secondary}
             />
           </TouchableOpacity>
-
-          <View style={styles.notificationOption}>
-            <Text style={styles.notificationText}>
-              Notificar cuando se acerque la fecha de vencimiento
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                notifyExpiry
-                  ? styles.toggleButtonActive
-                  : styles.toggleButtonInactive,
-              ]}
-              onPress={() => setNotifyExpiry(!notifyExpiry)}
-            >
-              <View
-                style={[
-                  styles.toggleIndicator,
-                  notifyExpiry
-                    ? styles.toggleIndicatorActive
-                    : styles.toggleIndicatorInactive,
-                ]}
-              />
-            </TouchableOpacity>
-          </View>
         </View>
 
         <TouchableOpacity
@@ -1128,55 +1103,6 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 16,
-    color: colors.text.primary,
-  },
-  notificationOption: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 10,
-  },
-  notificationText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    flex: 1,
-    marginRight: 10,
-  },
-  toggleButton: {
-    width: 50,
-    height: 26,
-    borderRadius: 13,
-    padding: 3,
-  },
-  toggleButtonActive: {
-    backgroundColor: colors.primary,
-  },
-  toggleButtonInactive: {
-    backgroundColor: "#ccc",
-  },
-  toggleIndicator: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "white",
-  },
-  toggleIndicatorActive: {
-    alignSelf: "flex-end",
-  },
-  toggleIndicatorInactive: {
-    alignSelf: "flex-start",
-  },
-  pickerContainer: {
-    backgroundColor: colors.background.secondary,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginTop: 5,
-    overflow: "hidden",
-  },
-  picker: {
-    width: "100%",
-    height: 50,
     color: colors.text.primary,
   },
   scannerText: {

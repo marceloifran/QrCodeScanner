@@ -28,6 +28,7 @@ import { colors } from "../theme/colors";
 import { formatPrice } from "../utils/formatters";
 import { useProducts } from "../hooks/useProducts";
 import { getCategoriesForIndustry } from "../utils/categoryUtils";
+import CacheService from "../utils/cacheService";
 
 // Función para obtener el nombre de la categoría a partir del ID
 const getCategoryName = (categoryId, categories) => {
@@ -46,7 +47,8 @@ export default function ProductListScreen({ navigation, route }) {
   const [industryType, setIndustryType] = useState("general");
   const [loadError, setLoadError] = useState(false);
 
-  const { products, loading, loadProducts } = useProducts();
+  const { products, loading, loadProducts, refreshProducts, refreshing } =
+    useProducts();
 
   const isSelecting = route.params?.isSelecting || false;
   const { filter, category } = route.params || {};
@@ -93,7 +95,7 @@ export default function ProductListScreen({ navigation, route }) {
     // Añadir un listener para cuando la pantalla recibe el foco
     const unsubscribe = navigation.addListener("focus", () => {
       loadCategories();
-      loadProducts(); // También recargamos los productos
+      refreshProducts(); // Refrescar los productos al volver a la pantalla
     });
 
     // Limpiar el listener cuando el componente se desmonta
@@ -142,9 +144,6 @@ export default function ProductListScreen({ navigation, route }) {
           productsByCategory[p.category].push(p.name);
         }
       });
-
-      // Ya no necesitamos verificar categorías predefinidas
-      // Simplemente podemos usar las categorías que tenemos
     }
   }, [products]);
 
@@ -289,7 +288,7 @@ export default function ProductListScreen({ navigation, route }) {
   }, []);
 
   const handleRefresh = () => {
-    loadProducts();
+    refreshProducts(); // Usar la nueva función de refresh que invalida el caché
   };
 
   const handleProductPress = (product) => {
@@ -316,8 +315,17 @@ export default function ProductListScreen({ navigation, route }) {
             onPress: async () => {
               try {
                 await deleteDoc(doc(db, "products", productId));
+
+                // Invalidar el caché de productos después de eliminar
+                if (auth.currentUser) {
+                  await CacheService.invalidateCache(
+                    "products",
+                    auth.currentUser.uid
+                  );
+                }
+
                 // Recargar productos después de eliminar
-                loadProducts();
+                loadProducts(true); // Forzar recarga desde Firestore
                 Alert.alert("Éxito", "Producto eliminado correctamente");
               } catch (error) {
                 console.error("Error al eliminar producto:", error);
@@ -620,64 +628,52 @@ export default function ProductListScreen({ navigation, route }) {
 
       {renderSortHeader()}
 
-      {loading ? (
-        <View style={styles.loaderContainer}>
-          <ActivityIndicator
-            size="large"
-            color={colors.primary}
-            style={styles.loader}
+      <FlatList
+        data={filteredProducts}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        contentContainerStyle={styles.productsList}
+        ListEmptyComponent={
+          loadError ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>
+                No se pudieron cargar los productos
+              </Text>
+              <TouchableOpacity
+                style={styles.errorButton}
+                onPress={() => {
+                  setLoadError(false);
+                  refreshProducts();
+                }}
+              >
+                <Text style={styles.errorButtonText}>Reintentar</Text>
+              </TouchableOpacity>
+            </View>
+          ) : loading ? (
+            <ActivityIndicator size="large" color={colors.primary} />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="archive-outline" size={50} color="#ddd" />
+              <Text style={styles.emptyText}>No hay productos</Text>
+              <TouchableOpacity
+                style={styles.addProductButton}
+                onPress={() => navigation.navigate("AddProduct")}
+              >
+                <Text style={styles.addProductButtonText}>
+                  Agregar Producto
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
           />
-          <Text style={styles.loaderText}>Cargando datos...</Text>
-        </View>
-      ) : loadError ? (
-        <View style={styles.errorContainer}>
-          <Ionicons
-            name="alert-circle"
-            size={40}
-            color={colors.error}
-            style={styles.errorIcon}
-          />
-          <Text style={styles.errorText}>
-            Ocurrió un error al cargar los datos
-          </Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={() => {
-              setLoadError(false);
-              loadProducts();
-              loadCategories();
-            }}
-          >
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      ) : filteredProducts.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons
-            name="basket-outline"
-            size={60}
-            color="#ccc"
-            style={styles.emptyIcon}
-          />
-          <Text style={styles.emptyText}>No se encontraron productos</Text>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => navigation.navigate("AddProduct")}
-          >
-            <Text style={styles.addButtonText}>Agregar producto</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredProducts}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
-          }
-        />
-      )}
+        }
+      />
 
       {!isSelecting && (
         <TouchableOpacity
@@ -826,7 +822,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "bold",
   },
-  listContent: {
+  productsList: {
     paddingHorizontal: 16,
     paddingBottom: 80,
   },
@@ -977,5 +973,27 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 3,
+  },
+  errorButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  errorButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  addProductButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  addProductButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "500",
   },
 });

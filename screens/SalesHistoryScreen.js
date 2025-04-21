@@ -15,7 +15,8 @@ import { colors } from "../theme/colors";
 import { formatPrice } from "../utils/formatters";
 import { useSales } from "../hooks/useSales";
 import { doc, deleteDoc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { db, auth } from "../firebase/config";
+import CacheService from "../utils/cacheService";
 
 export default function SalesHistoryScreen({ navigation }) {
   const [filter, setFilter] = useState("all");
@@ -136,6 +137,17 @@ export default function SalesHistoryScreen({ navigation }) {
           onPress: async () => {
             try {
               await deleteDoc(doc(db, "sales", saleId));
+
+              // Invalidar el caché de ventas después de eliminar
+              const cacheKey = `sales_${filter}`;
+              await CacheService.invalidateCache(
+                cacheKey,
+                auth.currentUser.uid
+              );
+
+              // También invalidar el caché general de ventas
+              await CacheService.invalidateCache("sales", auth.currentUser.uid);
+
               // Recargar las ventas
               refreshSales();
               Alert.alert("Éxito", "Venta eliminada correctamente");
@@ -167,6 +179,13 @@ export default function SalesHistoryScreen({ navigation }) {
         updatedAt: new Date(),
       });
 
+      // Invalidar el caché de ventas después de actualizar
+      const cacheKey = `sales_${filter}`;
+      await CacheService.invalidateCache(cacheKey, auth.currentUser.uid);
+
+      // También invalidar el caché general de ventas
+      await CacheService.invalidateCache("sales", auth.currentUser.uid);
+
       // Cerrar modal y recargar
       setEditModalVisible(false);
       refreshSales();
@@ -195,20 +214,40 @@ export default function SalesHistoryScreen({ navigation }) {
     let formattedDate = "Fecha no disponible";
     try {
       if (item.date) {
-        formattedDate =
-          item.date.toLocaleDateString("es-AR", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "2-digit",
-          }) +
-          " " +
-          item.date.toLocaleTimeString("es-AR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
+        // Asegurarse de que date sea un objeto Date válido
+        let dateObj;
+
+        if (item.date instanceof Date) {
+          dateObj = item.date;
+        } else if (typeof item.date === "object" && item.date.seconds) {
+          // Es un timestamp de Firestore en formato objeto { seconds, nanoseconds }
+          dateObj = new Date(item.date.seconds * 1000);
+        } else if (typeof item.date === "string") {
+          // Es una cadena de texto, intentar convertir
+          dateObj = new Date(item.date);
+        }
+
+        // Verificar que la fecha sea válida
+        if (dateObj instanceof Date && !isNaN(dateObj.getTime())) {
+          formattedDate =
+            dateObj.toLocaleDateString("es-AR", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "2-digit",
+            }) +
+            " " +
+            dateObj.toLocaleTimeString("es-AR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+        } else {
+          console.log("Fecha inválida:", item.date);
+          formattedDate = "Fecha inválida";
+        }
       }
     } catch (error) {
-      console.error("Error al formatear fecha:", error);
+      console.error("Error al formatear fecha:", error, item.date);
+      formattedDate = "Error en fecha";
     }
 
     // Obtener el primer producto para mostrar como ejemplo

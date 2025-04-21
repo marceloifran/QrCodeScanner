@@ -34,6 +34,7 @@ import {
   getRemainingDaysMessage,
 } from "../constants/plans";
 import { validateUserSubscription } from "../utils/subscriptionUtils";
+import CacheService from "../utils/cacheService";
 
 export default function DashboardScreen({ navigation }) {
   const [recentSales, setRecentSales] = useState([]);
@@ -111,22 +112,76 @@ export default function DashboardScreen({ navigation }) {
     try {
       // Verificar que el usuario esté autenticado
       if (!auth.currentUser || !auth.currentUser.uid) {
-        console.log("Usuario no autenticado");
         setLoading(false);
         setRefreshing(false);
         return;
       }
 
-      // Cargar productos
-      const productsQuery = query(
-        collection(db, "products"),
-        where("userId", "==", auth.currentUser.uid)
-      );
-      const productsSnapshot = await getDocs(productsQuery);
-      const productsData = productsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const userId = auth.currentUser.uid;
+      let productsData = [];
+      let salesData = [];
+
+      // Try to get data from cache first
+      const useCache = !refreshing; // No usar caché si el usuario está haciendo un "pull to refresh"
+
+      if (useCache) {
+        // Intentar cargar productos desde caché
+        const cachedProducts = await CacheService.getFromCache(
+          "products",
+          userId
+        );
+        if (cachedProducts) {
+          productsData = cachedProducts;
+        }
+
+        // Intentar cargar ventas desde caché
+        const cachedSales = await CacheService.getFromCache("sales", userId);
+        if (cachedSales) {
+          salesData = cachedSales;
+        }
+      }
+
+      // Si no tenemos datos en caché, cargar desde Firestore
+      if (productsData.length === 0) {
+        // Cargar productos
+        const productsQuery = query(
+          collection(db, "products"),
+          where("userId", "==", userId)
+        );
+        const productsSnapshot = await getDocs(productsQuery);
+        productsData = productsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        // Guardar en caché para uso futuro
+        if (productsData.length > 0) {
+          await CacheService.saveToCache("products", productsData, userId);
+        }
+      }
+
+      if (salesData.length === 0) {
+        // Cargar ventas
+        const salesQuery = query(
+          collection(db, "sales"),
+          where("userId", "==", userId)
+        );
+        const salesSnapshot = await getDocs(salesQuery);
+        salesData = salesSnapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            date: data.date?.toDate ? data.date.toDate() : new Date(),
+            total: data.total || 0,
+          };
+        });
+
+        // Guardar en caché para uso futuro
+        if (salesData.length > 0) {
+          await CacheService.saveToCache("sales", salesData, userId);
+        }
+      }
 
       // Contar productos totales
       const totalProducts = productsData ? productsData.length : 0;
@@ -167,34 +222,18 @@ export default function DashboardScreen({ navigation }) {
         lowStockData && lowStockData.length > 0 ? lowStockData.slice(0, 5) : []
       );
 
-      // Cargar ventas
-      const salesQuery = query(
-        collection(db, "sales"),
-        where("userId", "==", auth.currentUser.uid)
-      );
-      const salesSnapshot = await getDocs(salesQuery);
-      const allSalesData = salesSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          date: data.date?.toDate ? data.date.toDate() : new Date(),
-          total: data.total || 0,
-        };
-      });
-
       // Ordenar ventas por fecha para mostrar las más recientes
       const sortedSales =
-        allSalesData && allSalesData.length > 0
-          ? [...allSalesData].sort((a, b) => b.date - a.date)
+        salesData && salesData.length > 0
+          ? [...salesData].sort((a, b) => b.date - a.date)
           : [];
 
       // Contar ventas totales (todas, no solo las recientes)
-      const totalSales = allSalesData ? allSalesData.length : 0;
+      const totalSales = salesData ? salesData.length : 0;
 
       // Calcular ingresos totales
-      const totalIncome = allSalesData
-        ? allSalesData.reduce((sum, sale) => sum + (sale.total || 0), 0)
+      const totalIncome = salesData
+        ? salesData.reduce((sum, sale) => sum + (sale.total || 0), 0)
         : 0;
 
       setRecentSales(
@@ -222,34 +261,64 @@ export default function DashboardScreen({ navigation }) {
     if (!auth.currentUser) return;
 
     try {
-      // 1. Obtener productos con stock bajo usando umbral personalizado
-      const productsQuery = query(
-        collection(db, "products"),
-        where("userId", "==", auth.currentUser.uid)
-      );
-      const productsSnapshot = await getDocs(productsQuery);
+      const userId = auth.currentUser.uid;
 
-      // Filtrar usando el umbral personalizado de cada producto
-      const lowStockProducts = productsSnapshot.docs.filter((doc) => {
-        const product = doc.data();
+      // Intentar usar productos cacheados primero
+      let productsToCheck = [];
+      const cachedProducts = await CacheService.getFromCache(
+        "products",
+        userId
+      );
+
+      if (cachedProducts && !refreshing) {
+        // No usar caché durante refresh
+        console.log("Usando productos en caché para notificaciones");
+        productsToCheck = cachedProducts;
+      } else {
+        // Si no hay productos en caché, cargar desde Firestore
+        console.log("Cargando productos desde Firestore para notificaciones");
+        const productsQuery = query(
+          collection(db, "products"),
+          where("userId", "==", userId)
+        );
+        const productsSnapshot = await getDocs(productsQuery);
+        productsToCheck = productsSnapshot.docs.map((doc) => doc.data());
+      }
+
+      // 1. Obtener productos con stock bajo usando umbral personalizado
+      const lowStockProducts = productsToCheck.filter((product) => {
         const threshold = product.lowStockThreshold || 5;
         const stock = product.stock || 0;
         return stock <= threshold;
       });
 
       // 2. Obtener notificaciones de vencimiento
-      const notificationsQuery = query(
-        collection(db, "productNotifications"),
-        where("userId", "==", auth.currentUser.uid)
-      );
-      const notificationsSnapshot = await getDocs(notificationsQuery);
+      let expirationNotifications = [];
 
-      // Filtrar para obtener solo notificaciones válidas de vencimiento
-      const expirationNotifications = notificationsSnapshot.docs.filter(
-        (doc) => {
+      // Intentar usar caché para notificaciones de vencimiento
+      const cachedExpirationNotifications = await CacheService.getFromCache(
+        "expiryNotifications",
+        userId
+      );
+
+      if (cachedExpirationNotifications && !refreshing) {
+        console.log("Usando notificaciones de vencimiento en caché");
+        expirationNotifications = cachedExpirationNotifications;
+      } else {
+        console.log("Cargando notificaciones de vencimiento desde Firestore");
+        const notificationsQuery = query(
+          collection(db, "productNotifications"),
+          where("userId", "==", userId)
+        );
+        const notificationsSnapshot = await getDocs(notificationsQuery);
+
+        const currentDate = new Date();
+        expirationNotifications = [];
+
+        for (const doc of notificationsSnapshot.docs) {
           const notification = doc.data();
           if (!notification.expiryDate || notification.notifyExpiry === false) {
-            return false;
+            continue;
           }
 
           try {
@@ -262,30 +331,39 @@ export default function DashboardScreen({ navigation }) {
             } else if (typeof notification.expiryDate === "string") {
               expirationDate = new Date(notification.expiryDate);
             } else {
-              return false;
+              continue;
             }
 
             // Verificar que la fecha sea válida
             if (isNaN(expirationDate.getTime())) {
-              return false;
+              continue;
             }
 
-            const currentDate = new Date();
             const daysUntilExpiration = Math.ceil(
               (expirationDate - currentDate) / (1000 * 60 * 60 * 24)
             );
 
             // Incluir solo las que vencen en menos de 15 días
-            return daysUntilExpiration <= 15;
+            if (daysUntilExpiration <= 15) {
+              expirationNotifications.push(notification);
+            }
           } catch (error) {
             console.error(
               "Error al procesar notificación de vencimiento:",
               error
             );
-            return false;
           }
         }
-      );
+
+        // Guardar en caché para uso futuro
+        if (expirationNotifications.length > 0) {
+          await CacheService.saveToCache(
+            "expiryNotifications",
+            expirationNotifications,
+            userId
+          );
+        }
+      }
 
       // Actualizar contador con la suma de ambos tipos de notificaciones
       const totalNotifications =
@@ -357,26 +435,41 @@ export default function DashboardScreen({ navigation }) {
 
   const loadCategories = async () => {
     try {
-      // Cargar la industria del usuario
+      // Intentar cargar desde caché primero
+      const cachedCategories = await CacheService.getFromCache(
+        "categories",
+        auth.currentUser.uid
+      );
+
+      if (cachedCategories) {
+        setCategories(cachedCategories);
+        return;
+      }
+
+      // Si no hay caché, cargar desde Firestore
       const businessInfoRef = doc(db, "businessInfo", auth.currentUser.uid);
       const businessInfoDoc = await getDoc(businessInfoRef);
 
       let userIndustry = "general";
       if (businessInfoDoc.exists()) {
-        const data = businessInfoDoc.data();
-        if (data && "industry" in data && data.industry) {
-          userIndustry = data.industry;
-        }
+        userIndustry = businessInfoDoc.data().industry || "general";
       }
 
-      // Obtener categorías directamente de categoryUtils
       const industryCategories = getCategoriesForIndustry(userIndustry);
-      setCategories(industryCategories);
+
+      // Guardar en caché
+      if (industryCategories) {
+        await CacheService.saveToCache(
+          "categories",
+          industryCategories,
+          auth.currentUser.uid
+        );
+      }
+
+      setCategories(industryCategories || []);
     } catch (error) {
-      console.error("Error al cargar la industria:", error);
-      // En caso de error, usar categorías generales
-      const defaultCategories = getCategoriesForIndustry("general");
-      setCategories(defaultCategories);
+      console.error("Error al cargar categorías:", error);
+      setCategories(getCategoriesForIndustry("general") || []);
     }
   };
 
@@ -447,15 +540,35 @@ export default function DashboardScreen({ navigation }) {
   const formatSaleDate = (date) => {
     try {
       if (!date) return "";
-      const day = date.getDate().toString().padStart(2, "0");
-      const month = (date.getMonth() + 1).toString().padStart(2, "0");
-      const year = date.getFullYear().toString().slice(2);
-      const hours = date.getHours().toString().padStart(2, "0");
-      const minutes = date.getMinutes().toString().padStart(2, "0");
+
+      // Asegúrate de que date sea un objeto Date válido
+      let dateObj;
+      if (date instanceof Date) {
+        dateObj = date;
+      } else if (typeof date === "object" && date.seconds) {
+        // Es un timestamp de Firestore en formato objeto { seconds, nanoseconds }
+        dateObj = new Date(date.seconds * 1000);
+      } else if (typeof date === "string") {
+        // Es una cadena de texto, intentar convertir
+        dateObj = new Date(date);
+      } else {
+        return "Fecha inválida";
+      }
+
+      // Verificar que la fecha sea válida antes de intentar formatearla
+      if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
+        return "Fecha inválida";
+      }
+
+      const day = dateObj.getDate().toString().padStart(2, "0");
+      const month = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+      const year = dateObj.getFullYear().toString().slice(2);
+      const hours = dateObj.getHours().toString().padStart(2, "0");
+      const minutes = dateObj.getMinutes().toString().padStart(2, "0");
       return `${day}/${month}/${year}, ${hours}:${minutes}`;
     } catch (error) {
-      console.error("Error formateando fecha:", error);
-      return "";
+      console.error("Error formateando fecha:", error, date);
+      return "Error en fecha";
     }
   };
 

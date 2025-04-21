@@ -250,11 +250,11 @@ export default function EditProductScreen({ navigation, route }) {
         category,
         updatedAt: serverTimestamp(),
         expiryDate: expiryDateTimestamp,
-        notifyExpiry: notifyExpiry,
+        notifyExpiry: true,
       });
 
-      // Verificar si el producto necesita notificación por fecha de vencimiento
-      if (expiryDate && notifyExpiry) {
+      // Gestionar notificaciones de vencimiento
+      if (expiryDate) {
         const currentDate = new Date();
         const daysUntilExpiration = Math.ceil(
           (expiryDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)
@@ -267,7 +267,7 @@ export default function EditProductScreen({ navigation, route }) {
         // Si está por vencer en los próximos 15 días, registrarlo para notificaciones
         if (daysUntilExpiration <= 15) {
           console.log(
-            `Creando notificación: Producto vence en ${daysUntilExpiration} días`
+            `Creando/actualizando notificación: Producto vence en ${daysUntilExpiration} días`
           );
           const notificationData = {
             productId,
@@ -282,10 +282,10 @@ export default function EditProductScreen({ navigation, route }) {
           await setDoc(notificationRef, notificationData);
         } else {
           console.log(
-            `No se crea notificación: Producto vence en ${daysUntilExpiration} días (>15)`
+            `No se crea notificación inmediata: Producto vence en ${daysUntilExpiration} días (>15)`
           );
 
-          // Intentar eliminar notificación existente si hay
+          // Verificar si existe una notificación previa para eliminarla
           try {
             const notificationDoc = await getDoc(notificationRef);
             if (notificationDoc.exists()) {
@@ -298,8 +298,8 @@ export default function EditProductScreen({ navigation, route }) {
             console.error("Error al intentar eliminar la notificación:", error);
           }
         }
-      } else if (!notifyExpiry) {
-        // Si el usuario ha desactivado las notificaciones, eliminar la notificación si existe
+      } else {
+        // Si se eliminó la fecha de vencimiento, eliminar cualquier notificación existente
         const notificationId = `expiry_${productId}`;
         const notificationRef = doc(db, "productNotifications", notificationId);
         try {
@@ -307,7 +307,7 @@ export default function EditProductScreen({ navigation, route }) {
           if (notificationDoc.exists()) {
             await deleteDoc(notificationRef);
             console.log(
-              "Notificación eliminada porque el usuario desactivó las notificaciones"
+              "Notificación eliminada porque se eliminó la fecha de vencimiento"
             );
           }
         } catch (error) {
@@ -486,10 +486,7 @@ export default function EditProductScreen({ navigation, route }) {
   };
 
   const handleDateChange = (event, selectedDate) => {
-    // Ocultar el selector de fecha en Android después de seleccionar
     setShowDatePicker(false);
-
-    // Si se seleccionó una fecha, actualizar el estado
     if (selectedDate) {
       console.log("Fecha seleccionada:", selectedDate);
       setExpiryDate(selectedDate);
@@ -560,20 +557,42 @@ export default function EditProductScreen({ navigation, route }) {
   const categoryName = getCategoryName(category, categories) || "Sin categoría";
 
   const renderDatePicker = () => {
-    return (
-      <View style={styles.datePickerContainer}>
+    if (!expiryDate) {
+      return (
         <TouchableOpacity
-          style={styles.datePickerButton}
-          onPress={handleDateSelection}
+          style={styles.addDateButton}
+          onPress={() => {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            setExpiryDate(tomorrow);
+          }}
         >
-          <Ionicons name="calendar-outline" size={24} color={colors.primary} />
-          <Text style={styles.datePickerText}>
-            {expiryDate ? expiryDate.toLocaleDateString() : "Seleccionar fecha"}
+          <Text style={styles.addDateButtonText}>
+            Agregar fecha de vencimiento
           </Text>
         </TouchableOpacity>
+      );
+    }
 
-        {/* Renderiza el selector solo en Android/iOS */}
-        {showDatePicker && Platform.OS !== "web" && (
+    return (
+      <View>
+        <View style={styles.datePickerContainer}>
+          <TouchableOpacity
+            style={styles.dateButton}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={styles.dateText}>
+              {expiryDate.toLocaleDateString()}
+            </Text>
+            <Ionicons
+              name="calendar-outline"
+              size={24}
+              color={colors.text.secondary}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {showDatePicker && (
           <DateTimePicker
             testID="dateTimePicker"
             value={expiryDate || new Date()}
@@ -583,6 +602,13 @@ export default function EditProductScreen({ navigation, route }) {
             minimumDate={new Date()}
           />
         )}
+
+        <TouchableOpacity
+          style={styles.removeExpiryDateButton}
+          onPress={() => setExpiryDate(null)}
+        >
+          <Text style={styles.removeExpiryDateText}>Eliminar fecha</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -624,34 +650,8 @@ export default function EditProductScreen({ navigation, route }) {
             {renderCategorySelector()}
           </View>
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Fecha de vencimiento (opcional)</Text>
+            <Text style={styles.label}>Fecha de vencimiento </Text>
             {renderDatePicker()}
-
-            {expiryDate && (
-              <View style={styles.notificationOption}>
-                <Text style={styles.notificationText}>
-                  Notificar cuando se acerque la fecha de vencimiento
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleButton,
-                    notifyExpiry
-                      ? styles.toggleButtonActive
-                      : styles.toggleButtonInactive,
-                  ]}
-                  onPress={() => setNotifyExpiry(!notifyExpiry)}
-                >
-                  <View
-                    style={[
-                      styles.toggleIndicator,
-                      notifyExpiry
-                        ? styles.toggleIndicatorActive
-                        : styles.toggleIndicatorInactive,
-                    ]}
-                  />
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
           <Text style={styles.label}>Precio</Text>
           <TextInput
@@ -1092,6 +1092,39 @@ const styles = StyleSheet.create({
   },
   formGroup: {
     marginBottom: 20,
+  },
+  addDateButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+    alignItems: "center",
+  },
+  addDateButtonText: {
+    color: colors.background,
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  dateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+  },
+  dateText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    marginRight: 10,
+  },
+  removeExpiryDateButton: {
+    backgroundColor: "#f0f0f0",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+    alignItems: "center",
+  },
+  removeExpiryDateText: {
+    fontSize: 16,
+    color: "#666",
   },
 });
 

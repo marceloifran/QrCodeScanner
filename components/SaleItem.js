@@ -1,17 +1,44 @@
-import React, { memo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { colors } from '../theme/colors';
-import { formatPrice } from '../utils/formatters';
+import React, { memo } from "react";
+import { View, Text, StyleSheet } from "react-native";
+import { colors } from "../theme/colors";
+import { formatPrice } from "../utils/formatters";
 
 const SaleItem = ({ item }) => {
   const formatDate = (date) => {
-    return date.toLocaleDateString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    try {
+      if (!date) return "Fecha no disponible";
+
+      // Asegúrate de que date sea un objeto Date válido
+      let dateObj;
+      if (date instanceof Date) {
+        dateObj = date;
+      } else if (typeof date === "object" && date.seconds) {
+        // Es un timestamp de Firestore en formato objeto { seconds, nanoseconds }
+        dateObj = new Date(date.seconds * 1000);
+      } else if (typeof date === "string") {
+        // Es una cadena de texto, intentar convertir
+        dateObj = new Date(date);
+      } else {
+        return "Fecha inválida";
+      }
+
+      // Verificar que la fecha sea válida
+      if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
+        console.log("Fecha inválida en SaleItem:", date);
+        return "Fecha inválida";
+      }
+
+      return dateObj.toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      console.error("Error formateando fecha en SaleItem:", error, date);
+      return "Error en fecha";
+    }
   };
 
   return (
@@ -21,11 +48,12 @@ const SaleItem = ({ item }) => {
         <Text style={styles.saleTotal}>{formatPrice(item.total)}</Text>
       </View>
       <View style={styles.itemsList}>
-        {item.items.map((product, index) => (
-          <Text key={index} style={styles.itemText}>
-            {product.quantity}x {product.name} - {formatPrice(product.price)}
-          </Text>
-        ))}
+        {item.items &&
+          item.items.map((product, index) => (
+            <Text key={index} style={styles.itemText}>
+              {product.quantity}x {product.name} - {formatPrice(product.price)}
+            </Text>
+          ))}
       </View>
     </View>
   );
@@ -41,8 +69,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   saleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 10,
   },
   saleDate: {
@@ -52,7 +80,7 @@ const styles = StyleSheet.create({
   saleTotal: {
     color: colors.primary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   itemsList: {
     borderTopWidth: 1,
