@@ -1,6 +1,21 @@
 // Definición de planes disponibles
 export const SUBSCRIPTION_PLANS = [
   {
+    id: "free",
+    name: "Plan Gratuito",
+    price: 0, // en pesos argentinos
+    priceDisplay: "Gratis",
+    productLimit: 10,
+    features: [
+      "Hasta 10 productos",
+      "Escaneo de códigos QR",
+      "Gestión de inventario",
+      "Acceso a funcionalidades básicas",
+    ],
+    color: "#6c757d",
+    recommended: false,
+  },
+  {
     id: "base",
     name: "Plan Base",
     price: 15000, // en pesos argentinos

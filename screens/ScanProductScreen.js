@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Modal,
   Keyboard,
+  Animated,
+  Dimensions,
 } from "react-native";
 import { Camera, CameraView } from "expo-camera";
 import {
@@ -38,6 +40,10 @@ function formatMoney(value) {
   });
 }
 
+const { width } = Dimensions.get("window");
+const scanAreaWidth = width * 0.8;
+const scanAreaHeight = scanAreaWidth * 0.7;
+
 export default function ScanProductScreen({ navigation, route }) {
   const [hasPermission, setHasPermission] = useState(null);
   const [scanning, setScanning] = useState(true);
@@ -55,6 +61,9 @@ export default function ScanProductScreen({ navigation, route }) {
   const [processingOrder, setProcessingOrder] = useState(false);
   // Nuevo estado para almacenar todos los productos en caché
   const [cachedProducts, setCachedProducts] = useState(null);
+
+  // Animación para la línea de escaneo
+  const scanLineAnimation = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     (async () => {
@@ -618,12 +627,22 @@ export default function ScanProductScreen({ navigation, route }) {
           >
             <View style={styles.overlay}>
               <Text style={styles.scanText}>Escanea el código de barras</Text>
+
               <View style={styles.scanArea}>
-                <View style={styles.scanLine}></View>
+                {/* Esquinas estilizadas */}
+                <View style={[styles.corner, styles.cornerTopLeft]}></View>
+                <View style={[styles.corner, styles.cornerTopRight]}></View>
+                <View style={[styles.corner, styles.cornerBottomLeft]}></View>
+                <View style={[styles.corner, styles.cornerBottomRight]}></View>
+
+                {/* Línea fija en el centro */}
+                <View style={styles.fixedScanLine} />
               </View>
+
               {loading && (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#fff" />
+                  <ActivityIndicator size="large" color="#28a745" />
+                  <Text style={styles.loadingText}>Buscando producto...</Text>
                 </View>
               )}
 
@@ -632,6 +651,7 @@ export default function ScanProductScreen({ navigation, route }) {
                 style={styles.searchButton}
                 onPress={() => setSearchModalVisible(true)}
               >
+                <Ionicons name="search" size={20} color="white" />
                 <Text style={styles.searchButtonText}>Buscar por Nombre</Text>
               </TouchableOpacity>
 
@@ -641,11 +661,16 @@ export default function ScanProductScreen({ navigation, route }) {
                   style={styles.viewCartButton}
                   onPress={() => setScanning(false)}
                 >
+                  <Ionicons name="cart" size={20} color="white" />
                   <Text style={styles.viewCartButtonText}>
                     Ver Carrito ({cart.length})
                   </Text>
                 </TouchableOpacity>
               )}
+
+              <Text style={styles.footerText}>
+                Posiciona el código de barras dentro del cuadro
+              </Text>
             </View>
           </CameraView>
         </View>
@@ -821,7 +846,15 @@ export default function ScanProductScreen({ navigation, route }) {
       >
         <View style={styles.modalContainer}>
           <View style={styles.searchModalContent}>
-            <Text style={styles.modalTitle}>Buscar Producto</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Buscar Producto</Text>
+              <TouchableOpacity
+                onPress={() => setSearchModalVisible(false)}
+                style={styles.closeSearchButton}
+              >
+                <Ionicons name="close" size={16} color="#28a745" />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.searchInputContainer}>
               <Ionicons
@@ -1026,31 +1059,45 @@ const styles = StyleSheet.create({
   // ====== ESCANEO ======
   scanContainer: {
     flex: 1,
+    paddingBottom: 60, // Espacio para la barra de navegación
   },
   camera: {
     flex: 1,
   },
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "space-between",
+    paddingTop: 40,
+    paddingBottom: 100, // Espacio para la barra de navegación
   },
   scanText: {
     color: "white",
-    fontSize: 18,
-    marginBottom: 20,
+    fontSize: 22,
+    marginBottom: 25,
+    fontWeight: "600",
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+    textAlign: "center",
   },
   scanArea: {
-    width: "80%",
-    height: 200,
-    borderWidth: 2,
-    borderColor: "green",
+    width: scanAreaWidth,
+    height: scanAreaHeight,
+    borderWidth: 0,
     justifyContent: "center",
+    alignSelf: "center",
+    position: "relative",
+    overflow: "hidden",
+    marginTop: -40,
   },
-  scanLine: {
-    height: 2,
-    backgroundColor: "red",
+  fixedScanLine: {
+    height: 1,
+    width: "100%",
+    backgroundColor: "#fff", // Línea blanca en lugar de verde
+    position: "absolute",
+    top: "50%",
+    opacity: 0.7,
   },
   loadingContainer: {
     position: "absolute",
@@ -1062,34 +1109,62 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.7)",
   },
+  loadingText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 10,
+  },
   searchButton: {
-    backgroundColor: "#6c757d",
-    padding: 15,
-    borderRadius: 5,
+    backgroundColor: "#28a745",
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    borderRadius: 12,
     marginTop: 20,
-    marginBottom: 10,
+    marginBottom: 15,
     width: "80%",
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    alignSelf: "center",
   },
   searchButtonText: {
     color: "white",
     fontWeight: "bold",
     fontSize: 16,
+    marginLeft: 8,
   },
   viewCartButton: {
-    backgroundColor: "#007bff",
-    padding: 15,
-    borderRadius: 5,
-    marginTop: 30,
+    backgroundColor: "#28a745",
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    borderRadius: 12,
+    marginTop: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+    alignSelf: "center",
   },
   viewCartButtonText: {
     color: "white",
     fontWeight: "bold",
+    fontSize: 16,
+    marginLeft: 8,
   },
   // ====== CARRITO ======
   cartScreenContainer: {
     flex: 1,
-    backgroundColor: "#f5f5f7",
+    backgroundColor: "#f8f9fa",
+    paddingBottom: 60, // Espacio para la barra de navegación
   },
   headerRow: {
     flexDirection: "row",
@@ -1294,32 +1369,49 @@ const styles = StyleSheet.create({
   },
   searchModalContent: {
     backgroundColor: "white",
-    borderRadius: 10,
+    borderRadius: 20,
     padding: 20,
     width: "90%",
     maxHeight: "80%",
-    elevation: 5,
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 15,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
+    color: "#28a745",
+    flex: 1,
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: 0,
   },
   searchInputContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f5f5f5",
-    borderRadius: 5,
-    paddingHorizontal: 10,
+    borderRadius: 12,
+    paddingHorizontal: 15,
     marginVertical: 15,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#e0e0e0",
+    height: 50,
   },
   searchInput: {
     flex: 1,
-    height: 40,
+    height: 48,
     fontSize: 16,
+    color: "#333",
   },
   clearButton: {
     padding: 5,
@@ -1374,17 +1466,24 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   closeModalButton: {
-    backgroundColor: "#dc3545",
-    padding: 10,
-    borderRadius: 5,
+    backgroundColor: "#f5f5f5",
+    padding: 12,
+    borderRadius: 12,
     alignItems: "center",
     flex: 1,
     marginRight: 5,
+    borderWidth: 1,
+    borderColor: "#28a745",
+  },
+  closeModalButtonText: {
+    color: "#28a745",
+    fontWeight: "bold",
+    fontSize: 16,
   },
   viewCartModalButton: {
     backgroundColor: "#28a745",
-    padding: 10,
-    borderRadius: 5,
+    padding: 12,
+    borderRadius: 12,
     alignItems: "center",
     flex: 1,
     marginLeft: 5,
@@ -1392,24 +1491,92 @@ const styles = StyleSheet.create({
   viewCartModalButtonText: {
     color: "white",
     fontWeight: "bold",
+    fontSize: 16,
   },
   processingModalContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
   },
   processingModalContent: {
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
-    borderRadius: 10,
-    padding: 20,
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 25,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 7,
+    borderWidth: 1,
+    borderColor: "#28a745",
+  },
+  processingModalText: {
+    color: "#28a745",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 15,
+  },
+  // Styles for corners
+  corner: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderColor: "#28a745",
+    borderWidth: 3,
+    backgroundColor: "transparent",
+  },
+  cornerTopLeft: {
+    top: 0,
+    left: 0,
+    borderBottomWidth: 0,
+    borderRightWidth: 0,
+    borderTopLeftRadius: 15,
+  },
+  cornerTopRight: {
+    top: 0,
+    right: 0,
+    borderBottomWidth: 0,
+    borderLeftWidth: 0,
+    borderTopRightRadius: 15,
+  },
+  cornerBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+    borderBottomLeftRadius: 15,
+  },
+  cornerBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderTopWidth: 0,
+    borderLeftWidth: 0,
+    borderBottomRightRadius: 15,
+  },
+  footerText: {
+    color: "rgba(255, 255, 255, 0.9)",
+    fontSize: 16,
+    position: "absolute",
+    bottom: 80,
+    textAlign: "center",
+    width: "100%",
+  },
+  closeSearchButton: {
+    backgroundColor: "#f5f5f5",
+    padding: 8,
+    borderRadius: 8,
+    width: 32,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
   },
-  processingModalText: {
-    color: "white",
+  noResultsText: {
+    color: "#666",
     fontSize: 16,
-    fontWeight: "bold",
-    marginTop: 15,
+    textAlign: "center",
+    marginTop: 20,
   },
 });

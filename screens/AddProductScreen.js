@@ -13,6 +13,7 @@ import {
   Modal,
   FlatList,
   Switch,
+  Dimensions,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import {
@@ -40,6 +41,8 @@ import {
   verifyProductLimit,
   checkProductLimit,
 } from "../utils/subscriptionUtils";
+
+const { width } = Dimensions.get("window");
 
 export default function AddProductScreen({ navigation }) {
   const [barcode, setBarcode] = useState("");
@@ -846,18 +849,46 @@ export default function AddProductScreen({ navigation }) {
               flashMode="auto"
             >
               <View style={styles.scannerOverlay}>
-                <View style={styles.scannerTarget}>
-                  <View style={styles.scanLine} />
+                <View style={styles.header}>
+                  <TouchableOpacity
+                    style={styles.closeButton}
+                    onPress={() => setScanning(false)}
+                  >
+                    <Ionicons name="close" size={28} color="white" />
+                  </TouchableOpacity>
+                  <Text style={styles.headerTitle}>
+                    Escanear código de barras
+                  </Text>
                 </View>
-                <Text style={styles.scannerText}>
-                  Apunta al código de barras
-                </Text>
-                <TouchableOpacity
-                  style={styles.cancelScanButton}
-                  onPress={() => setScanning(false)}
-                >
-                  <Text style={styles.cancelScanButtonText}>Cancelar</Text>
-                </TouchableOpacity>
+
+                <View style={styles.scanAreaContainer}>
+                  <View style={styles.scanArea}>
+                    {/* Esquinas estilizadas */}
+                    <View style={[styles.corner, styles.cornerTopLeft]}></View>
+                    <View style={[styles.corner, styles.cornerTopRight]}></View>
+                    <View
+                      style={[styles.corner, styles.cornerBottomLeft]}
+                    ></View>
+                    <View
+                      style={[styles.corner, styles.cornerBottomRight]}
+                    ></View>
+
+                    {/* Línea fija en el centro */}
+                    <View style={styles.fixedScanLine} />
+                  </View>
+                </View>
+
+                <View style={styles.footer}>
+                  <Text style={styles.footerText}>
+                    Posiciona el código de barras dentro del cuadro
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.cancelScanButton}
+                    onPress={() => setScanning(false)}
+                  >
+                    <Text style={styles.cancelScanButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </CameraView>
           </View>
@@ -1006,31 +1037,110 @@ const styles = StyleSheet.create({
   },
   scannerOverlay: {
     flex: 1,
-    justifyContent: "center",
+    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingBottom: 60, // Espacio para la barra de navegación
   },
-  scannerTarget: {
-    width: 250,
-    height: 250,
-    borderWidth: 2,
-    borderColor: "white",
-    borderRadius: 12,
-    justifyContent: "center",
+  header: {
+    flexDirection: "row",
     alignItems: "center",
+    padding: 20,
+    paddingTop: 40,
+    alignSelf: "stretch",
   },
-  scanLine: {
-    height: 2,
-    width: "80%",
-    backgroundColor: colors.primary,
+  closeButton: {
+    padding: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.3)",
   },
-  scannerCloseButton: {
+  headerTitle: {
+    color: "white",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginLeft: 15,
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  scanAreaContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: -60,
+  },
+  scanArea: {
+    width: width * 0.8,
+    height: width * 0.8 * 0.7,
+    backgroundColor: "transparent",
+    overflow: "hidden",
+    position: "relative",
+  },
+  fixedScanLine: {
+    height: 1,
+    width: "100%",
+    backgroundColor: "#fff",
     position: "absolute",
-    top: 40,
-    right: 20,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 20,
-    padding: 10,
+    top: "50%",
+    opacity: 0.7,
+  },
+  corner: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderColor: "#28a745",
+    borderWidth: 3,
+    backgroundColor: "transparent",
+  },
+  cornerTopLeft: {
+    top: 0,
+    left: 0,
+    borderBottomWidth: 0,
+    borderRightWidth: 0,
+    borderTopLeftRadius: 15,
+  },
+  cornerTopRight: {
+    top: 0,
+    right: 0,
+    borderBottomWidth: 0,
+    borderLeftWidth: 0,
+    borderTopRightRadius: 15,
+  },
+  cornerBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+    borderBottomLeftRadius: 15,
+  },
+  cornerBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderTopWidth: 0,
+    borderLeftWidth: 0,
+    borderBottomRightRadius: 15,
+  },
+  footer: {
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  footerText: {
+    color: "rgba(255, 255, 255, 0.9)",
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 20,
+  },
+  cancelScanButton: {
+    backgroundColor: "#28a745",
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 12,
+  },
+  cancelScanButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
   },
   percentageButtonsContainer: {
     flexDirection: "row",
@@ -1104,22 +1214,5 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 16,
     color: colors.text.primary,
-  },
-  scannerText: {
-    color: "white",
-    fontSize: 16,
-    marginTop: 20,
-    marginBottom: 30,
-  },
-  cancelScanButton: {
-    backgroundColor: colors.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 25,
-  },
-  cancelScanButtonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "bold",
   },
 });

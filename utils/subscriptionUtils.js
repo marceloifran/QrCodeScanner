@@ -18,10 +18,10 @@ export const validateUserSubscription = async (userId) => {
     if (!userId) {
       console.error("No se proporcionó ID de usuario");
       return {
-        isValid: false,
-        planId: "base",
-        message: "Necesitas iniciar sesión para usar la aplicación",
-        requiresPlanSelection: true,
+        isValid: true, // Permitir acceso incluso sin ID de usuario
+        planId: "free",
+        message: "Plan gratuito activado",
+        requiresPlanSelection: false,
       };
     }
 
@@ -30,31 +30,33 @@ export const validateUserSubscription = async (userId) => {
     // Verificar el estado actual de la suscripción
     const subscriptionStatus = await checkSubscriptionStatus(userId);
 
+    // Si no tiene suscripción activa, asignar automáticamente plan gratuito
     if (!subscriptionStatus.active) {
-      console.log("Suscripción no activa:", subscriptionStatus.message);
+      console.log("Suscripción no activa, asignando plan gratuito");
 
-      // Si el usuario tiene una suscripción pero expiró, actualizar el estado
-      if (subscriptionStatus.planId !== "base") {
-        try {
-          const userRef = doc(db, "businessInfo", userId);
-          await updateDoc(userRef, {
-            subscriptionPlan: "base",
-            "subscription.status": "expired",
-          });
-          console.log("Estado de suscripción actualizado a expirado");
-        } catch (updateError) {
-          console.error(
-            "Error al actualizar estado de suscripción:",
-            updateError
-          );
-        }
+      // Si el usuario tiene una suscripción pero expiró, actualizar el estado a free
+      try {
+        const userRef = doc(db, "businessInfo", userId);
+        await updateDoc(userRef, {
+          subscriptionPlan: "free",
+          "subscription.status": "active", // Activo en lugar de expired
+          "subscription.planId": "free",
+          "subscription.activationDate": new Date(),
+          "subscription.expirationDate": null, // Plan gratuito no expira
+        });
+        console.log("Estado de suscripción actualizado a plan gratuito");
+      } catch (updateError) {
+        console.error(
+          "Error al actualizar estado de suscripción:",
+          updateError
+        );
       }
 
       return {
-        isValid: false,
-        planId: "base",
-        message: "Debes seleccionar un plan para usar la aplicación",
-        requiresPlanSelection: true,
+        isValid: true,
+        planId: "free",
+        message: "Plan gratuito activado",
+        requiresPlanSelection: false, // No requiere selección, ya está en plan gratuito
       };
     }
 
@@ -63,15 +65,15 @@ export const validateUserSubscription = async (userId) => {
       isValid: true,
       planId: subscriptionStatus.planId,
       expirationDate: subscriptionStatus.expirationDate,
-      requiresPlanSelection: false,
+      requiresPlanSelection: false, // Nunca requerir selección de plan
     };
   } catch (error) {
     console.error("Error al validar suscripción:", error);
     return {
-      isValid: false,
-      planId: "base",
+      isValid: true, // En caso de error, permitir acceso
+      planId: "free",
       error: error.message,
-      requiresPlanSelection: true,
+      requiresPlanSelection: false, // No requerir selección en caso de error
     };
   }
 };
@@ -91,19 +93,19 @@ export const checkProductLimit = async (userId) => {
     }
 
     const userData = userDoc.data();
-    let planId = "base";
+    let planId = "free"; // Plan gratuito por defecto
 
     // Verificar si el usuario tiene una suscripción activa
     if (userData.subscription && userData.subscription.status === "active") {
-      planId = userData.subscription.planId || "base";
+      planId = userData.subscription.planId || "free";
     } else if (userData.subscriptionPlan) {
       // Para compatibilidad con versiones anteriores
-      planId = userData.subscriptionPlan || "base";
+      planId = userData.subscriptionPlan || "free";
     }
 
     // Asegurar que planId sea una cadena de texto válida
     if (!planId || typeof planId !== "string") {
-      planId = "base";
+      planId = "free";
     }
 
     const plan = getPlanById(planId);

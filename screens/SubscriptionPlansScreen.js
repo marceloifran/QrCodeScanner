@@ -21,6 +21,8 @@ import {
   renewSubscription,
 } from "../services/PaymentService";
 import { colors } from "../theme/colors";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase/config";
 
 export default function SubscriptionPlansScreen({ navigation, route }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
@@ -126,6 +128,66 @@ export default function SubscriptionPlansScreen({ navigation, route }) {
     }
 
     const plan = SUBSCRIPTION_PLANS.find((p) => p.id === selectedPlan);
+
+    // Si el plan seleccionado es el gratuito, activarlo directamente sin redirección a pagos
+    if (plan.id === "free") {
+      Alert.alert(
+        "Confirmar cambio de plan",
+        `¿Deseas cambiar al ${plan.name}?\n\n` +
+          `Este plan te permite gestionar hasta ${plan.productLimit} productos de forma gratuita.\n\n` +
+          `Tu plan actual será desactivado al confirmar el cambio.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          {
+            text: "Confirmar",
+            onPress: async () => {
+              try {
+                const userId = auth.currentUser?.uid;
+                if (!userId) {
+                  Alert.alert("Error", "Usuario no autenticado");
+                  return;
+                }
+
+                // Actualizar el plan del usuario a gratuito
+                const userRef = doc(db, "businessInfo", userId);
+                await updateDoc(userRef, {
+                  subscriptionPlan: "free",
+                  "subscription.status": "active",
+                  "subscription.planId": "free",
+                  "subscription.activationDate": new Date(),
+                  "subscription.expirationDate": null, // Plan gratuito no expira
+                });
+
+                Alert.alert(
+                  "Plan activado",
+                  "Has activado correctamente el Plan Gratuito",
+                  [
+                    {
+                      text: "OK",
+                      onPress: () => {
+                        navigation.reset({
+                          index: 0,
+                          routes: [{ name: "Main" }],
+                        });
+                      },
+                    },
+                  ]
+                );
+              } catch (error) {
+                console.error("Error al activar plan gratuito:", error);
+                Alert.alert(
+                  "Error",
+                  "No se pudo activar el plan gratuito. Inténtalo nuevamente."
+                );
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // Para planes de pago, continuar al proceso de pago normal
     const nextPayment = new Date();
     nextPayment.setMonth(nextPayment.getMonth() + 1);
 

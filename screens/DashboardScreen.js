@@ -55,6 +55,9 @@ export default function DashboardScreen({ navigation }) {
   const [expirationMessage, setExpirationMessage] = useState("");
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [needsSubscription, setNeedsSubscription] = useState(false);
+  const [userPlan, setUserPlan] = useState("free");
+  const [warningModalVisible, setWarningModalVisible] = useState(false);
+  const [subscriptionMessage, setSubscriptionMessage] = useState("");
 
   useEffect(() => {
     loadDashboardData();
@@ -573,28 +576,64 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const checkSubscriptionStatus = async () => {
-    if (!auth.currentUser) return;
-
-    try {
-      const subscriptionStatus = await validateUserSubscription(
-        auth.currentUser.uid
-      );
-
-      if (subscriptionStatus.requiresPlanSelection) {
-        setNeedsSubscription(true);
-        setShowSubscriptionModal(true);
-      } else {
-        setNeedsSubscription(false);
-        setShowSubscriptionModal(false);
-      }
-    } catch (error) {
-      console.error("Error al verificar suscripción:", error);
-    }
+    await checkSubscription();
   };
 
   const navigateToPlans = () => {
     setShowSubscriptionModal(false);
     navigation.navigate("SubscriptionPlans");
+  };
+
+  const checkSubscription = async () => {
+    try {
+      if (!auth.currentUser) return;
+
+      // Obtener datos del usuario desde Firestore
+      const userRef = doc(db, "businessInfo", auth.currentUser.uid);
+      const userSnapshot = await getDoc(userRef);
+
+      if (!userSnapshot.exists()) return;
+
+      const userData = userSnapshot.data();
+      const result = await validateUserSubscription(auth.currentUser.uid);
+
+      // Si el usuario está en el plan gratuito (free), no mostrar ninguna alerta
+      if (result.planId === "free") {
+        setUserPlan("free");
+        return;
+      }
+
+      // Para otros planes, actualizar el plan del usuario en el estado
+      setUserPlan(result.planId);
+
+      // Si hay una fecha de expiración y está próxima a vencer, mostrar alerta
+      if (result.expirationDate) {
+        // Convertir la fecha de expiración a un objeto Date si es necesario
+        let expirationDate;
+        if (result.expirationDate instanceof Date) {
+          expirationDate = result.expirationDate;
+        } else if (result.expirationDate.seconds) {
+          expirationDate = new Date(result.expirationDate.seconds * 1000);
+        } else if (typeof result.expirationDate === "string") {
+          expirationDate = new Date(result.expirationDate);
+        }
+
+        if (expirationDate && !isNaN(expirationDate.getTime())) {
+          const now = new Date();
+          const diffTime = expirationDate.getTime() - now.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          if (diffDays <= 5 && diffDays > 0) {
+            setWarningModalVisible(true);
+            setSubscriptionMessage(
+              `Tu suscripción vence en ${diffDays} días. Renuévala para seguir utilizando la aplicación.`
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error al verificar la suscripción:", error);
+    }
   };
 
   if (loading && !refreshing) {
@@ -778,13 +817,7 @@ export default function DashboardScreen({ navigation }) {
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleContainer}>
               <Text style={styles.sectionTitle}>Productos con Stock Bajo</Text>
-              {stats.lowStockCount > 0 && (
-                <View style={styles.sectionBadge}>
-                  <Text style={styles.sectionBadgeText}>
-                    {stats.lowStockCount}
-                  </Text>
-                </View>
-              )}
+              {stats.lowStockCount > 0}
             </View>
             <TouchableOpacity onPress={viewLowStockProducts}>
               <Text style={styles.seeAllText}>Ver todos</Text>

@@ -13,6 +13,7 @@ import {
   Modal,
   FlatList,
   Switch,
+  Dimensions,
 } from "react-native";
 import {
   doc,
@@ -32,6 +33,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { Camera, CameraView } from "expo-camera"; // Import Camera components
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { getCategoriesForIndustry } from "../utils/categoryUtils";
+
+const { width } = Dimensions.get("window");
+const scanAreaWidth = width * 0.8;
+const scanAreaHeight = scanAreaWidth * 0.7;
 
 export default function EditProductScreen({ navigation, route }) {
   const { productId } = route.params;
@@ -511,38 +516,73 @@ export default function EditProductScreen({ navigation, route }) {
 
   const renderBarcodeScanner = () =>
     scanning && (
-      <View style={StyleSheet.absoluteFillObject}>
-        <CameraView
-          style={StyleSheet.absoluteFillObject}
-          onBarcodeScanned={(data) => {
-            setBarcode(data.data);
-            setScanning(false);
-          }}
-          barcodeScannerSettings={{
-            barcodeTypes: [
-              "ean13",
-              "ean8",
-              "upc_e",
-              "upc_a",
-              "code39",
-              "code128",
-            ],
-          }}
-        >
-          <View style={styles.scannerOverlay}>
-            <View style={styles.scannerTarget}>
-              <View style={styles.scanLine} />
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={scanning}
+        onRequestClose={() => setScanning(false)}
+      >
+        <View style={StyleSheet.absoluteFillObject}>
+          <CameraView
+            style={StyleSheet.absoluteFillObject}
+            onBarcodeScanned={(data) => {
+              setBarcode(data.data);
+              setScanning(false);
+            }}
+            barcodeScannerSettings={{
+              barcodeTypes: [
+                "ean13",
+                "ean8",
+                "upc_e",
+                "upc_a",
+                "code39",
+                "code128",
+              ],
+            }}
+          >
+            <View style={styles.scannerOverlay}>
+              <View style={styles.header}>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setScanning(false)}
+                >
+                  <Ionicons name="close" size={28} color="white" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>
+                  Escanear código de barras
+                </Text>
+              </View>
+
+              <View style={styles.scanAreaContainer}>
+                <View style={styles.scanArea}>
+                  {/* Esquinas estilizadas */}
+                  <View style={[styles.corner, styles.cornerTopLeft]}></View>
+                  <View style={[styles.corner, styles.cornerTopRight]}></View>
+                  <View style={[styles.corner, styles.cornerBottomLeft]}></View>
+                  <View
+                    style={[styles.corner, styles.cornerBottomRight]}
+                  ></View>
+
+                  {/* Línea fija en el centro */}
+                  <View style={styles.fixedScanLine} />
+                </View>
+              </View>
+
+              <View style={styles.footer}>
+                <Text style={styles.footerText}>
+                  Posiciona el código de barras dentro del cuadro
+                </Text>
+                <TouchableOpacity
+                  style={styles.cancelScanButton}
+                  onPress={() => setScanning(false)}
+                >
+                  <Text style={styles.cancelScanButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text style={styles.scannerText}>Apunta al código de barras</Text>
-            <TouchableOpacity
-              style={styles.cancelScanButton}
-              onPress={() => setScanning(false)}
-            >
-              <Text style={styles.cancelScanButtonText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </CameraView>
-      </View>
+          </CameraView>
+        </View>
+      </Modal>
     );
 
   if (loading && !name) {
@@ -990,35 +1030,105 @@ const styles = StyleSheet.create({
   },
   scannerOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    paddingBottom: 60, // Espacio para la barra de navegación
   },
-  scannerTarget: {
-    width: 300,
-    height: 100,
-    borderWidth: 2,
-    borderColor: "white",
-    backgroundColor: "transparent",
-    justifyContent: "center",
+  header: {
+    flexDirection: "row",
     alignItems: "center",
+    padding: 20,
+    paddingTop: 40,
+    alignSelf: "stretch",
   },
-  scanLine: {
-    height: 2,
-    width: "90%",
-    backgroundColor: "red",
+  closeButton: {
+    padding: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.3)",
   },
-  scannerText: {
+  headerTitle: {
     color: "white",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginLeft: 15,
+    textShadowColor: "rgba(0, 0, 0, 0.75)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  scanAreaContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: -60,
+  },
+  scanArea: {
+    width: scanAreaWidth,
+    height: scanAreaHeight,
+    backgroundColor: "transparent",
+    overflow: "hidden",
+    position: "relative",
+  },
+  fixedScanLine: {
+    height: 1,
+    width: "100%",
+    backgroundColor: "#fff",
+    position: "absolute",
+    top: "50%",
+    opacity: 0.7,
+  },
+  corner: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderColor: "#28a745",
+    borderWidth: 3,
+    backgroundColor: "transparent",
+  },
+  cornerTopLeft: {
+    top: 0,
+    left: 0,
+    borderBottomWidth: 0,
+    borderRightWidth: 0,
+    borderTopLeftRadius: 15,
+  },
+  cornerTopRight: {
+    top: 0,
+    right: 0,
+    borderBottomWidth: 0,
+    borderLeftWidth: 0,
+    borderTopRightRadius: 15,
+  },
+  cornerBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+    borderBottomLeftRadius: 15,
+  },
+  cornerBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderTopWidth: 0,
+    borderLeftWidth: 0,
+    borderBottomRightRadius: 15,
+  },
+  footer: {
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  footerText: {
+    color: "rgba(255, 255, 255, 0.9)",
+    textAlign: "center",
     fontSize: 16,
-    marginTop: 20,
-    marginBottom: 30,
+    fontWeight: "500",
+    marginBottom: 20,
   },
   cancelScanButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: "#28a745",
     paddingVertical: 12,
     paddingHorizontal: 30,
-    borderRadius: 25,
+    borderRadius: 12,
   },
   cancelScanButtonText: {
     color: "white",
