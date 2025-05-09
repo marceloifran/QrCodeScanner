@@ -29,6 +29,7 @@ import { formatPrice } from "../utils/formatters";
 import { useProducts } from "../hooks/useProducts";
 import { getCategoriesForIndustry } from "../utils/categoryUtils";
 import CacheService from "../utils/cacheService";
+import { Feather } from "@expo/vector-icons";
 
 // Función para obtener el nombre de la categoría a partir del ID
 const getCategoryName = (categoryId, categories) => {
@@ -41,6 +42,7 @@ export default function ProductListScreen({ navigation, route }) {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const [zeroStockFilter, setZeroStockFilter] = useState(false);
+  const [expiryFilter, setExpiryFilter] = useState(false);
   const [sortBy, setSortBy] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
   const [categories, setCategories] = useState([]);
@@ -158,32 +160,16 @@ export default function ProductListScreen({ navigation, route }) {
   }, [loading]);
 
   const filteredProducts = useMemo(() => {
-    if (!products || products.length === 0) return [];
+    if (!products) return [];
 
     return products
       .filter((product) => {
-        // Filtro de búsqueda
-        if (searchQuery) {
-          // Normalizar la búsqueda (eliminar acentos)
-          const normalizedSearchText = searchQuery
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "");
-
-          // Normalizar el nombre del producto (eliminar acentos)
-          const normalizedName = (product.name || "")
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "");
-
-          const normalizedBarcode = (product.barcode || "").toLowerCase();
-
-          const nameMatch = normalizedName.includes(normalizedSearchText);
-          const barcodeMatch = normalizedBarcode.includes(normalizedSearchText);
-
-          if (!nameMatch && !barcodeMatch) {
-            return false;
-          }
+        // Buscar por nombre
+        if (
+          searchQuery &&
+          !product.name.toLowerCase().includes(searchQuery.toLowerCase())
+        ) {
+          return false;
         }
 
         // Filtro de stock bajo
@@ -199,7 +185,34 @@ export default function ProductListScreen({ navigation, route }) {
           return false;
         }
 
-        // Filtro por categoría
+        // Filtro de productos por vencer (dentro de 15 días)
+        if (expiryFilter) {
+          if (!product.expiryDate) {
+            return false;
+          }
+          
+          const expiryDate = new Date(
+            product.expiryDate.seconds ? product.expiryDate.seconds * 1000 :
+            product.expiryDate.toDate ? product.expiryDate.toDate() : product.expiryDate
+          );
+          
+          const today = new Date();
+          const diffTime = expiryDate - today;
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays > 15 || diffDays < 0) {
+            return false;
+          }
+
+          // Si hay una categoría seleccionada, también filtramos por esa categoría
+          if (selectedCategory && product.category !== selectedCategory) {
+            return false;
+          }
+          
+          return true; // Si pasa el filtro de vencimiento, mostramos el producto
+        }
+
+        // Filtro por categoría (solo si no estamos filtrando por vencimiento)
         if (selectedCategory) {
           return product.category === selectedCategory;
         }
@@ -216,6 +229,32 @@ export default function ProductListScreen({ navigation, route }) {
           result = parseFloat(a.price) - parseFloat(b.price);
         } else if (sortBy === "stock") {
           result = parseInt(a.stock) - parseInt(b.stock);
+        } else if (sortBy === "expiryDate") {
+          // Ordenar por fecha de vencimiento (más próximos primero)
+          const dateA = a.expiryDate ? new Date(
+            a.expiryDate.seconds ? a.expiryDate.seconds * 1000 :
+            a.expiryDate.toDate ? a.expiryDate.toDate() : a.expiryDate
+          ) : new Date(9999, 11, 31); // Fecha muy lejana para productos sin vencimiento
+
+          const dateB = b.expiryDate ? new Date(
+            b.expiryDate.seconds ? b.expiryDate.seconds * 1000 :
+            b.expiryDate.toDate ? b.expiryDate.toDate() : b.expiryDate
+          ) : new Date(9999, 11, 31);
+
+          result = dateA - dateB;
+        } else if (sortBy === "lowStock") {
+          // Ordenar por relación con umbral de stock bajo
+          const thresholdA = a.lowStockThreshold || 5;
+          const thresholdB = b.lowStockThreshold || 5;
+          
+          // Calcular proporción de stock respecto al umbral (menor es más crítico)
+          const ratioA = a.stock / thresholdA;
+          const ratioB = b.stock / thresholdB;
+          
+          result = ratioA - ratioB;
+        } else if (sortBy === "zeroStock") {
+          // Ordenar por cantidad de stock (menor stock primero)
+          result = a.stock - b.stock;
         }
 
         return sortOrder === "asc" ? result : -result;
@@ -228,6 +267,7 @@ export default function ProductListScreen({ navigation, route }) {
     searchQuery,
     sortBy,
     sortOrder,
+    expiryFilter,
   ]);
 
   const categoryCounts = useMemo(() => {
@@ -284,6 +324,8 @@ export default function ProductListScreen({ navigation, route }) {
   const clearFilters = useCallback(() => {
     setSelectedCategory(null);
     setLowStockFilter(false);
+    setZeroStockFilter(false);
+    setExpiryFilter(false);
     setSearchQuery("");
   }, []);
 
@@ -402,69 +444,6 @@ export default function ProductListScreen({ navigation, route }) {
 
   const keyExtractor = useCallback((item) => item.id, []);
 
-  const renderSortHeader = () => {
-    return (
-      <View style={styles.sortHeader}>
-        <TouchableOpacity
-          style={styles.sortButton}
-          onPress={() => {
-            if (sortBy === "name") {
-              setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-            } else {
-              setSortBy("name");
-              setSortOrder("asc");
-            }
-          }}
-        >
-          <Text style={styles.sortButtonText}>Nombre</Text>
-          {sortBy === "name" && (
-            <Text style={styles.sortButtonIcon}>
-              {sortOrder === "asc" ? "↑" : "↓"}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.sortButton}
-          onPress={() => {
-            if (sortBy === "price") {
-              setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-            } else {
-              setSortBy("price");
-              setSortOrder("asc");
-            }
-          }}
-        >
-          <Text style={styles.sortButtonText}>Precio</Text>
-          {sortBy === "price" && (
-            <Text style={styles.sortButtonIcon}>
-              {sortOrder === "asc" ? "↑" : "↓"}
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.sortButton}
-          onPress={() => {
-            if (sortBy === "stock") {
-              setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-            } else {
-              setSortBy("stock");
-              setSortOrder("asc");
-            }
-          }}
-        >
-          <Text style={styles.sortButtonText}>Stock</Text>
-          {sortBy === "stock" && (
-            <Text style={styles.sortButtonIcon}>
-              {sortOrder === "asc" ? "↑" : "↓"}
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
   const renderCategoryFilters = () => {
     return (
       <View style={styles.categoriesWrapper}>
@@ -571,62 +550,101 @@ export default function ProductListScreen({ navigation, route }) {
       <View style={styles.filtersRow}>
         {renderCategoryFilters()}
 
-        <View style={styles.filterButtons}>
+        <View style={styles.filterContainer}>
           <TouchableOpacity
-            style={[
-              styles.filterButton,
-              lowStockFilter && styles.activeFilterButton,
-            ]}
+            style={[styles.filterButton, lowStockFilter && styles.filterButtonActive]}
             onPress={() => {
               setLowStockFilter(!lowStockFilter);
               setZeroStockFilter(false);
-              setSelectedCategory(null);
+              setExpiryFilter(false);
             }}
           >
-            <Ionicons
-              name="alert-circle-outline"
-              size={16}
-              color={lowStockFilter ? "#fff" : "#666"}
-            />
             <Text
               style={[
                 styles.filterButtonText,
-                lowStockFilter && styles.activeFilterText,
+                lowStockFilter && styles.filterButtonTextActive,
               ]}
             >
-              Stock bajo
+              Stock Bajo
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.filterButton,
-              zeroStockFilter && styles.activeFilterButton,
-            ]}
+            style={[styles.filterButton, zeroStockFilter && styles.filterButtonActive]}
             onPress={() => {
               setZeroStockFilter(!zeroStockFilter);
               setLowStockFilter(false);
-              setSelectedCategory(null);
+              setExpiryFilter(false);
             }}
           >
-            <Ionicons
-              name="close-circle-outline"
-              size={16}
-              color={zeroStockFilter ? "#fff" : "#666"}
-            />
             <Text
               style={[
                 styles.filterButtonText,
-                zeroStockFilter && styles.activeFilterText,
+                zeroStockFilter && styles.filterButtonTextActive,
               ]}
             >
-              Sin stock
+              Stock Cero
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, expiryFilter && styles.filterButtonActive]}
+            onPress={() => {
+              setExpiryFilter(!expiryFilter);
+              setLowStockFilter(false);
+              setZeroStockFilter(false);
+              // Si activamos el filtro de vencimiento, cambiamos automáticamente el orden
+              if (!expiryFilter) {
+                setSortBy("expiryDate");
+                setSortOrder("asc");
+              }
+            }}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                expiryFilter && styles.filterButtonTextActive,
+              ]}
+            >
+              Próximos a caducar
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterButton, sortBy === "expiryDate" && styles.filterButtonActive]}
+            onPress={() => {
+              if (sortBy === "expiryDate") {
+                setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+              } else {
+                setSortBy("expiryDate");
+                setSortOrder("asc");
+                setLowStockFilter(false);
+                setZeroStockFilter(false);
+                setExpiryFilter(false);
+              }
+            }}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                sortBy === "expiryDate" && styles.filterButtonTextActive,
+              ]}
+            >
+              Vencimiento {sortBy === "expiryDate" && (sortOrder === "asc" ? "↑" : "↓")}
+            </Text>
+          </TouchableOpacity>
+
+          {selectedCategory && (
+            <TouchableOpacity
+              style={styles.clearFilterButton}
+              onPress={clearFilters}
+            >
+              <Feather name="x" size={16} color="#000" />
+              <Text style={styles.clearFilterText}>Limpiar</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
-
-      {renderSortHeader()}
 
       <FlatList
         data={filteredProducts}
@@ -760,7 +778,7 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "500",
   },
-  filterButtons: {
+  filterContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginHorizontal: 10,
@@ -780,7 +798,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 1,
   },
-  activeFilterButton: {
+  filterButtonActive: {
     backgroundColor: colors.primary,
   },
   filterButtonText: {
@@ -788,39 +806,8 @@ const styles = StyleSheet.create({
     color: "#666",
     marginLeft: 5,
   },
-  activeFilterText: {
+  filterButtonTextActive: {
     color: "#fff",
-  },
-  sortHeader: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    marginHorizontal: 10,
-    marginBottom: 10,
-    paddingVertical: 8,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  sortButton: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: 5,
-  },
-  sortButtonText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#555",
-  },
-  sortButtonIcon: {
-    marginLeft: 5,
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: "bold",
   },
   productsList: {
     paddingHorizontal: 16,
@@ -995,5 +982,24 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "500",
+  },
+  clearFilterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+    elevation: 1,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+  },
+  clearFilterText: {
+    fontSize: 14,
+    color: "#666",
+    marginLeft: 5,
   },
 });

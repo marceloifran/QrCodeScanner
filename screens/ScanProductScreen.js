@@ -162,8 +162,12 @@ export default function ScanProductScreen({ navigation, route }) {
       return;
     }
 
+    // Desactivar el escaneo inmediatamente
     setScanning(false);
     setLoading(true);
+    
+    // Prevenir múltiples escaneos del mismo código de barras
+    // creando un bloqueo temporal para procesar solo un escaneo a la vez
     processBarcode(data);
   };
 
@@ -184,8 +188,11 @@ export default function ScanProductScreen({ navigation, route }) {
               "Sin stock",
               "Este producto no tiene unidades disponibles"
             );
-            setLoading(false);
-            setScanning(true);
+            // Reactivar el escaneo después de un breve retraso
+            setTimeout(() => {
+              setLoading(false);
+              setScanning(true);
+            }, 1500);
             return;
           }
 
@@ -203,8 +210,11 @@ export default function ScanProductScreen({ navigation, route }) {
                 "Stock insuficiente",
                 `Solo hay ${cachedProduct.stock} unidades disponibles`
               );
-              setLoading(false);
-              setScanning(true);
+              // Reactivar el escaneo después de un breve retraso
+              setTimeout(() => {
+                setLoading(false);
+                setScanning(true);
+              }, 1500);
               return;
             }
             updatedCart[existingItemIndex].quantity = newQuantity;
@@ -224,8 +234,11 @@ export default function ScanProductScreen({ navigation, route }) {
             ]);
           }
 
-          setLoading(false);
-          setScanning(true);
+          // Reactivar el escaneo después de un breve retraso
+          setTimeout(() => {
+            setLoading(false);
+            setScanning(true);
+          }, 1500);
           return;
         }
       }
@@ -276,22 +289,22 @@ export default function ScanProductScreen({ navigation, route }) {
 
           setCachedProducts(updatedCache);
           // También actualizar caché persistente
-          CacheService.saveToCache(
+          await CacheService.saveToCache(
             "products",
             updatedCache,
             auth.currentUser.uid
           );
         }
 
-        // Verificar stock
         if (product.stock <= 0) {
-          console.log("Producto sin stock:", product.name);
           Alert.alert(
             "Sin stock",
-            `El producto ${product.name} no tiene unidades disponibles.`
+            "Este producto no tiene unidades disponibles"
           );
-          setLoading(false);
-          setScanning(true);
+          setTimeout(() => {
+            setLoading(false);
+            setScanning(true);
+          }, 1500);
           return;
         }
 
@@ -332,47 +345,44 @@ export default function ScanProductScreen({ navigation, route }) {
         setScanning(true);
       }
     } catch (error) {
-      console.error("Error al buscar producto:", error);
-      setAlertActive(true);
+      console.error("Error procesando código de barras:", error);
+      Alert.alert("Error", "Ocurrió un error al procesar el código de barras");
       setTimeout(() => {
         setLoading(false);
         setScanning(true);
-        setAlertActive(false);
-      }, 1000);
+      }, 1500);
     }
   };
 
   // Agregar producto con cantidad seleccionada (cuando se abre el modal)
   const addToCart = () => {
-    const quantity = parseInt(currentQuantity);
-    if (isNaN(quantity) || quantity <= 0) {
-      Alert.alert("Error", "La cantidad debe ser un número positivo");
-      return;
-    }
-    if (quantity > selectedProduct.stock) {
-      Alert.alert(
-        "Error",
-        `Solo hay ${selectedProduct.stock} unidades disponibles`
-      );
-      return;
-    }
+    if (!selectedProduct) return;
 
+    // Usar cantidad fija de 1
+    const quantity = 1;
+
+    // Buscar si el producto ya está en el carrito
     const existingItemIndex = cart.findIndex(
       (item) => item.id === selectedProduct.id
     );
+
     if (existingItemIndex !== -1) {
+      // Actualizar cantidad
       const updatedCart = [...cart];
       const newQuantity = updatedCart[existingItemIndex].quantity + quantity;
+      
       if (newQuantity > selectedProduct.stock) {
         Alert.alert(
-          "Error",
-          `No hay suficiente stock. Solo quedan ${selectedProduct.stock} unidades`
+          "Stock insuficiente",
+          `No puedes agregar más. Ya tienes ${updatedCart[existingItemIndex].quantity} en el carrito y solo hay ${selectedProduct.stock} disponibles.`
         );
         return;
       }
+      
       updatedCart[existingItemIndex].quantity = newQuantity;
       setCart(updatedCart);
     } else {
+      // Agregar nuevo item
       setCart([
         ...cart,
         {
@@ -386,7 +396,15 @@ export default function ScanProductScreen({ navigation, route }) {
       ]);
     }
 
-    setModalVisible(false);
+    // Cerrar el modal si estuviera abierto
+    if (modalVisible) {
+      setModalVisible(false);
+    }
+    
+    // Resetear el producto seleccionado
+    setSelectedProduct(null);
+    
+    // Reactivar el escaneo
     setScanning(true);
   };
 
@@ -642,6 +660,20 @@ export default function ScanProductScreen({ navigation, route }) {
                 ],
               }}
             />
+          <CameraView
+            style={styles.camera}
+            onBarcodeScanned={
+              scanning && !loading && !alertActive
+                ? handleBarCodeScanned
+                : undefined
+            }
+            barcodeScannerSettings={{
+              barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e"],
+              interval: 2000,
+            }}
+            cameraType="back"
+            flashMode="auto"
+          >
             <View style={styles.overlay}>
               <Text style={styles.scanText}>Escanea el código de barras</Text>
 
@@ -1595,5 +1627,92 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
     marginTop: 20,
+  },
+  productModalContent: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    padding: 20,
+    width: "90%",
+    maxHeight: "80%",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  selectedProductContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  selectedProductName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 10,
+  },
+  selectedProductPrice: {
+    fontSize: 16,
+    color: "#28a745",
+    marginBottom: 10,
+  },
+  selectedProductStock: {
+    fontSize: 14,
+    color: "#666",
+  },
+  quantitySelectorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  quantitySelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#eee",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+  },
+  quantityAdjustButton: {
+    padding: 5,
+  },
+  quantityInput: {
+    flex: 1,
+    height: 48,
+    fontSize: 16,
+    color: "#333",
+  },
+  cancelButton: {
+    backgroundColor: "#f5f5f5",
+    padding: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    flex: 1,
+    marginRight: 5,
+    borderWidth: 1,
+    borderColor: "#28a745",
+  },
+  cancelButtonText: {
+    color: "#28a745",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  addToCartButton: {
+    backgroundColor: "#28a745",
+    padding: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    flex: 1,
+    marginLeft: 5,
+  },
+  addToCartButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  quantityLabel: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
   },
 });

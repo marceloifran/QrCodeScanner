@@ -16,6 +16,7 @@ import {
   getDocs,
   deleteDoc,
   doc,
+  setDoc,
 } from "firebase/firestore";
 import { db, auth } from "../firebase/config";
 import { colors } from "../theme/colors";
@@ -39,56 +40,143 @@ export default function NotificationsScreen({ navigation }) {
       // Cuando volvemos a esta pantalla, recargamos las notificaciones
       loadNotifications();
     });
+    
+    // Configurar un timer para actualizar las notificaciones cada minuto
+    // para mantener actualizado el cálculo de días restantes
+    const timer = setInterval(() => {
+      if (activeTab === "expiration") {
+        loadNotifications();
+      }
+    }, 60000); // Actualiza cada minuto
 
-    // Limpiar el listener cuando se desmonte el componente
-    return unsubscribe;
-  }, [navigation]);
+    // Limpiar el listener y el timer cuando se desmonte el componente
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
+  }, [navigation, activeTab]);
 
   const loadNotifications = async () => {
     setLoading(true);
     try {
       console.log("Cargando notificaciones...");
 
-      // Cargar notificaciones de stock bajo
+      // Cargar todos los productos para verificar stock bajo y fechas de vencimiento
       const productQuery = query(
         collection(db, "products"),
         where("userId", "==", auth.currentUser.uid)
       );
       const productSnapshot = await getDocs(productQuery);
       const lowStockNotifications = [];
+      const currentDate = new Date();
+      
+      // Notificaciones de expiración generadas dinámicamente desde productos
+      const expirationNotifications = [];
+      const createdNotifications = [];
 
-      productSnapshot.docs.forEach((doc) => {
-        const product = doc.data();
-        const threshold = product.lowStockThreshold || 5;
-
+      // Primero procesamos cada producto para stock bajo y para crear notificaciones de vencimiento si es necesario
+      for (const docSnap of productSnapshot.docs) {
+        const product = docSnap.data();
+        const productId = docSnap.id;
+        
         // Verificar stock bajo
+        const threshold = product.lowStockThreshold || 5;
         if (product.stock <= threshold) {
           lowStockNotifications.push({
-            id: `stock_${doc.id}`,
+            id: `stock_${productId}`,
             title: "Stock Bajo",
             message: `El producto "${product.name}" tiene un stock de ${product.stock} unidades (umbral: ${threshold}).`,
             date: new Date(),
             type: "low_stock",
-            productId: doc.id,
+            productId: productId,
             threshold: threshold,
             stock: product.stock,
           });
         }
-      });
+        
+        // Verificar si el producto tiene fecha de vencimiento
+        if (product.expiryDate) {
+          let expiryDate;
+          try {
+            // Convertir la fecha de vencimiento a un objeto Date
+            if (product.expiryDate.toDate) {
+              expiryDate = product.expiryDate.toDate();
+            } else if (product.expiryDate.seconds) {
+              expiryDate = new Date(product.expiryDate.seconds * 1000);
+            } else if (typeof product.expiryDate === "string") {
+              expiryDate = new Date(product.expiryDate);
+            }
+            
+            // Si la fecha es válida, calcular días hasta vencimiento
+            if (expiryDate && !isNaN(expiryDate.getTime())) {
+              const daysUntilExpiration = Math.ceil(
+                (expiryDate - currentDate) / (1000 * 60 * 60 * 24)
+              );
+              
+              // Si está próximo a vencer (15 días o menos), crear o verificar notificación
+              if (daysUntilExpiration <= 15) {
+                // Crear notificación para listar en la pantalla
+                expirationNotifications.push({
+                  id: `expiry_${productId}`,
+                  title: "Próximo a Vencer",
+                  message: daysUntilExpiration <= 0
+                    ? `El producto "${product.name}" ha vencido.`
+                    : `El producto "${product.name}" vencerá en ${daysUntilExpiration} días.`,
+                  date: new Date(),
+                  type: "expiration",
+                  productId: productId,
+                  productName: product.name,
+                  expirationDate: expiryDate,
+                  daysUntilExpiration,
+                });
+                
+                // También crear o verificar la notificación persistente en Firestore
+                const notificationId = `expiry_${productId}`;
+                const notificationData = {
+                  productId: productId,
+                  productName: product.name,
+                  expiryDate: product.expiryDate,
+                  notifyExpiry: true,
+                  notificationCreated: new Date(),
+                  userId: auth.currentUser.uid,
+                };
+                
+                createdNotifications.push({
+                  id: notificationId,
+                  data: notificationData
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error procesando fecha de vencimiento para producto ${productId}:`, error);
+          }
+        }
+      }
+      
+      // Ahora, guardar en Firestore las notificaciones que se crearon dinámicamente
+      const saveTasks = createdNotifications.map(notification => 
+        setDoc(doc(db, "productNotifications", notification.id), notification.data)
+      );
+      
+      if (saveTasks.length > 0) {
+        console.log(`Guardando/actualizando ${saveTasks.length} notificaciones de vencimiento`);
+        await Promise.all(saveTasks);
+      }
 
-      // Cargar notificaciones de vencimiento de la colección productNotifications
+      // Cargar notificaciones existentes de la colección productNotifications
+      // (esto es para casos donde la notificación tiene datos adicionales o históricos)
       const notificationsQuery = query(
         collection(db, "productNotifications"),
         where("userId", "==", auth.currentUser.uid)
       );
       const notificationsSnapshot = await getDocs(notificationsQuery);
-      const expirationNotifications = [];
-      const currentDate = new Date();
-      const deleteTasks = []; // Para almacenar promesas de eliminación
-
+      const deleteTasks = [];
+      
+      // Procesar las notificaciones existentes en Firestore
       notificationsSnapshot.docs.forEach((doc) => {
         const notification = doc.data();
-
+        const notificationId = doc.id;
+        
         // Verificar que sea una notificación de vencimiento
         if (!notification.expiryDate || notification.notifyExpiry === false) {
           // Si la notificación no tiene fecha de vencimiento o notifyExpiry es false,
@@ -96,85 +184,102 @@ export default function NotificationsScreen({ navigation }) {
           deleteTasks.push(deleteDoc(doc.ref));
           return;
         }
-
-        try {
-          // Convertir la fecha de vencimiento si es un timestamp de Firestore
-          let expirationDate;
-          if (notification.expiryDate.toDate) {
-            expirationDate = notification.expiryDate.toDate();
-          } else if (notification.expiryDate.seconds) {
-            expirationDate = new Date(notification.expiryDate.seconds * 1000);
-          } else if (typeof notification.expiryDate === "string") {
-            expirationDate = new Date(notification.expiryDate);
-          } else {
-            console.warn(
-              "Formato de fecha de vencimiento no reconocido:",
-              notification.expiryDate
-            );
-            // Programar eliminación de notificación inválida
-            deleteTasks.push(deleteDoc(doc.ref));
-            return;
-          }
-
-          // Verificar que la fecha sea válida
-          if (isNaN(expirationDate.getTime())) {
-            console.warn(
-              "Fecha de vencimiento inválida:",
-              notification.expiryDate
-            );
-            // Programar eliminación de notificación inválida
-            deleteTasks.push(deleteDoc(doc.ref));
-            return;
-          }
-
-          const daysUntilExpiration = Math.ceil(
-            (expirationDate - currentDate) / (1000 * 60 * 60 * 24)
-          );
-
-          // Asegurar que la fecha de notificación sea válida
-          let notificationDate;
-          if (notification.notificationCreated) {
-            if (notification.notificationCreated.toDate) {
-              notificationDate = notification.notificationCreated.toDate();
-            } else if (notification.notificationCreated.seconds) {
-              notificationDate = new Date(
-                notification.notificationCreated.seconds * 1000
+        
+        // Verificar si ya tenemos esta notificación en la lista generada dinámicamente
+        const alreadyProcessed = expirationNotifications.some(n => n.id === notificationId);
+        
+        if (!alreadyProcessed) {
+          try {
+            // Convertir la fecha de vencimiento si es un timestamp de Firestore
+            let expirationDate;
+            if (notification.expiryDate.toDate) {
+              expirationDate = notification.expiryDate.toDate();
+            } else if (notification.expiryDate.seconds) {
+              expirationDate = new Date(notification.expiryDate.seconds * 1000);
+            } else if (typeof notification.expiryDate === "string") {
+              expirationDate = new Date(notification.expiryDate);
+            } else {
+              console.warn(
+                "Formato de fecha de vencimiento no reconocido:",
+                notification.expiryDate
               );
-            } else if (notification.notificationCreated instanceof Date) {
-              notificationDate = notification.notificationCreated;
+              // Programar eliminación de notificación inválida
+              deleteTasks.push(deleteDoc(doc.ref));
+              return;
+            }
+
+            // Verificar que la fecha sea válida
+            if (isNaN(expirationDate.getTime())) {
+              console.warn(
+                "Fecha de vencimiento inválida:",
+                notification.expiryDate
+              );
+              // Programar eliminación de notificación inválida
+              deleteTasks.push(deleteDoc(doc.ref));
+              return;
+            }
+
+            // Calcular días restantes basado en la fecha actual
+            const daysUntilExpiration = Math.ceil(
+              (expirationDate - currentDate) / (1000 * 60 * 60 * 24)
+            );
+
+            // Asegurar que la fecha de notificación sea válida
+            let notificationDate;
+            if (notification.notificationCreated) {
+              if (notification.notificationCreated.toDate) {
+                notificationDate = notification.notificationCreated.toDate();
+              } else if (notification.notificationCreated.seconds) {
+                notificationDate = new Date(
+                  notification.notificationCreated.seconds * 1000
+                );
+              } else if (notification.notificationCreated instanceof Date) {
+                notificationDate = notification.notificationCreated;
+              } else {
+                notificationDate = new Date();
+              }
             } else {
               notificationDate = new Date();
             }
-          } else {
-            notificationDate = new Date();
-          }
 
-          // Solo mostrar notificaciones para productos que vencen en menos de 15 días
-          if (daysUntilExpiration <= 15) {
-            expirationNotifications.push({
-              id: doc.id,
-              title: "Próximo a Vencer",
-              message:
-                daysUntilExpiration <= 0
-                  ? `El producto "${notification.productName}" ha vencido.`
-                  : `El producto "${notification.productName}" vencerá en ${daysUntilExpiration} días.`,
-              date: notificationDate,
-              type: "expiration",
-              productId: notification.productId,
-              expirationDate: expirationDate,
-              daysUntilExpiration,
-            });
-          } else {
-            // Si ya no está dentro del rango de notificación, programar eliminación
-            console.log(
-              `Eliminando notificación fuera de rango: ${daysUntilExpiration} días`
-            );
+            // Solo mostrar notificaciones para productos que vencen en menos de 15 días
+            if (daysUntilExpiration <= 15) {
+              // Verificar si el producto aún existe
+              const productDoc = productSnapshot.docs.find(
+                (p) => p.id === notification.productId
+              );
+              
+              if (productDoc) {
+                // Si el producto existe, añadir a la lista si no está ya
+                expirationNotifications.push({
+                  id: doc.id,
+                  title: "Próximo a Vencer",
+                  message:
+                    daysUntilExpiration <= 0
+                      ? `El producto "${notification.productName}" ha vencido.`
+                      : `El producto "${notification.productName}" vencerá en ${daysUntilExpiration} días.`,
+                  date: notificationDate,
+                  type: "expiration",
+                  productId: notification.productId,
+                  expirationDate: expirationDate,
+                  daysUntilExpiration,
+                });
+              } else {
+                // Si el producto ya no existe, eliminar la notificación
+                deleteTasks.push(deleteDoc(doc.ref));
+              }
+            } else {
+              // Si ya no está dentro del rango de notificación, programar eliminación
+              console.log(
+                `Eliminando notificación fuera de rango: ${daysUntilExpiration} días`
+              );
+              deleteTasks.push(deleteDoc(doc.ref));
+            }
+          } catch (error) {
+            console.error("Error procesando notificación:", error, notification);
+            // En caso de error, programar eliminación de notificación problemática
             deleteTasks.push(deleteDoc(doc.ref));
           }
-        } catch (error) {
-          console.error("Error procesando notificación:", error, notification);
-          // En caso de error, programar eliminación de notificación problemática
-          deleteTasks.push(deleteDoc(doc.ref));
         }
       });
 
