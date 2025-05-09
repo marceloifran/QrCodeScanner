@@ -9,7 +9,7 @@ import {
   Dimensions,
   Animated,
 } from "react-native";
-import { Camera, CameraView } from "expo-camera";
+import { Camera } from "expo-camera";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db, auth } from "../firebase/config";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,6 +18,19 @@ import { colors } from "../theme/colors";
 const { width } = Dimensions.get("window");
 const scanAreaWidth = width * 0.8;
 const scanAreaHeight = scanAreaWidth * 0.7;
+
+// Constantes para tipos de códigos
+const BARCODE_TYPES = {
+  qr: "qr",
+  ean13: "ean13",
+  ean8: "ean8",
+  code128: "code128",
+  code39: "code39",
+  code93: "code93",
+  codabar: "codabar",
+  itf14: "itf14",
+  upc_e: "upc-e",
+};
 
 export default function ScanForStockScreen({ navigation, route }) {
   const [hasPermission, setHasPermission] = useState(null);
@@ -151,24 +164,25 @@ export default function ScanForStockScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <CameraView
-        ref={cameraRef}
-        style={styles.camera}
-        onBarcodeScanned={scanning ? handleBarCodeScanned : undefined}
-        barcodeScannerSettings={{
-          barcodeTypes: [
-            "qr",
-            "ean13",
-            "ean8",
-            "code128",
-            "code39",
-            "code93",
-            "codabar",
-            "itf14",
-            "upc_e",
-          ],
-        }}
-      >
+      <View style={styles.camera}>
+        <Camera
+          ref={cameraRef}
+          style={StyleSheet.absoluteFillObject}
+          onBarCodeScanned={scanning ? handleBarCodeScanned : undefined}
+          barCodeScannerSettings={{
+            barCodeTypes: [
+              BARCODE_TYPES.qr,
+              BARCODE_TYPES.ean13,
+              BARCODE_TYPES.ean8,
+              BARCODE_TYPES.code128,
+              BARCODE_TYPES.code39,
+              BARCODE_TYPES.code93,
+              BARCODE_TYPES.codabar,
+              BARCODE_TYPES.itf14,
+              BARCODE_TYPES.upc_e,
+            ],
+          }}
+        />
         <View style={styles.overlay}>
           <View style={styles.header}>
             <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
@@ -206,7 +220,7 @@ export default function ScanForStockScreen({ navigation, route }) {
             </Text>
           </View>
         </View>
-      </CameraView>
+      </View>
     </View>
   );
 }

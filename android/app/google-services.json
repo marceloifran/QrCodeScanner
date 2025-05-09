@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "908803753819",
+    "project_id": "kioskos-7e313",
+    "storage_bucket": "kioskos-7e313.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:908803753819:android:0cd2e364b9806a15dcbc7e",
+        "android_client_info": {
+          "package_name": "ifson.k"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBuMeKicTsAExv0_JVBRE0SjT2-4LZdM5M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

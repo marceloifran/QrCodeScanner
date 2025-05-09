@@ -1,7 +1,10 @@
-import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import {
+  getFirestore,
+  enableIndexedDbPersistence,
+  CACHE_SIZE_UNLIMITED,
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 // Configuración de Firebase
@@ -11,7 +14,7 @@ const firebaseConfig = {
   projectId: "kioskos-7e313",
   storageBucket: "kioskos-7e313.appspot.com",
   messagingSenderId: "908803753819",
-  appId: "1:908803753819:web:7e23aab80a5951f2dcbc7e"
+  appId: "1:908803753819:web:7e23aab80a5951f2dcbc7e",
 };
 
 // Inicializar Firebase
@@ -27,12 +30,10 @@ try {
   console.error("Error inicializando Firebase:", error);
 }
 
-// Inicializar Auth y Firestore
+// Inicializar Auth con getAuth en lugar de initializeAuth
 let auth;
 try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
-  });
+  auth = getAuth(app);
 } catch (error) {
   console.error("Error inicializando Auth:", error);
 }
@@ -44,14 +45,18 @@ const db = getFirestore(app);
 // y reducir errores de conexión
 try {
   enableIndexedDbPersistence(db, {
-    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
   }).catch((err) => {
-    if (err.code === 'failed-precondition') {
+    if (err.code === "failed-precondition") {
       // Múltiples pestañas abiertas, la persistencia solo puede habilitarse en una
-      console.warn('La persistencia de Firestore no pudo habilitarse: múltiples pestañas abiertas');
-    } else if (err.code === 'unimplemented') {
+      console.warn(
+        "La persistencia de Firestore no pudo habilitarse: múltiples pestañas abiertas"
+      );
+    } else if (err.code === "unimplemented") {
       // El navegador actual no soporta las características requeridas
-      console.warn('La persistencia de Firestore no está disponible en este entorno');
+      console.warn(
+        "La persistencia de Firestore no está disponible en este entorno"
+      );
     }
   });
 } catch (error) {
@@ -60,9 +65,9 @@ try {
 
 // Función para obtener el usuario actual
 export const getCurrentUser = () => {
-  return auth.currentUser;
+  return auth?.currentUser;
 };
 
 export const storage = getStorage(app);
 
-export { auth, app, db }; 
+export { auth, app, db };

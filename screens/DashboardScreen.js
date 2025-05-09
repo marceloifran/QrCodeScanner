@@ -80,7 +80,10 @@ export default function DashboardScreen({ navigation }) {
   useEffect(() => {
     const checkSubscriptionExpiration = async () => {
       try {
-        if (!auth.currentUser) return;
+        if (!auth || !auth.currentUser) {
+          console.log("No hay usuario autenticado para verificar expiración");
+          return;
+        }
 
         // Obtener información del usuario
         const userRef = doc(db, "businessInfo", auth.currentUser.uid);
@@ -576,7 +579,11 @@ export default function DashboardScreen({ navigation }) {
   };
 
   const checkSubscriptionStatus = async () => {
-    await checkSubscription();
+    try {
+      await checkSubscription();
+    } catch (error) {
+      console.error("Error en checkSubscriptionStatus:", error);
+    }
   };
 
   const navigateToPlans = () => {
@@ -586,7 +593,10 @@ export default function DashboardScreen({ navigation }) {
 
   const checkSubscription = async () => {
     try {
-      if (!auth.currentUser) return;
+      if (!auth || !auth.currentUser) {
+        console.log("No hay usuario autenticado para verificar suscripción");
+        return;
+      }
 
       // Obtener datos del usuario desde Firestore
       const userRef = doc(db, "businessInfo", auth.currentUser.uid);

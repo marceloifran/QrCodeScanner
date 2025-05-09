@@ -3,18 +3,17 @@
     "name": "Ifsin Negocios",
     "slug": "kiosko-app",
     "version": "1.0.0",
+    "sdkVersion": "53.0.0",
     "plugins": [
       [
         "expo-camera",
         {
-          "cameraPermission": "Permitir que $(PRODUCT_NAME) acceda a tu cámara."
+          "cameraPermission": "Permitir que $(PRODUCT_NAME) acceda a tu cámara para escanear códigos."
         }
       ],
-      "expo-barcode-scanner",
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
           "color": "#ffffff"
         }
       ]
@@ -35,7 +34,10 @@
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["qrcodescanner", "com.marceloifran.kioskoapp"],
+            "CFBundleURLSchemes": [
+              "qrcodescanner",
+              "com.marceloifran.kioskoapp"
+            ],
             "CFBundleTypeRole": "Editor"
           }
         ],

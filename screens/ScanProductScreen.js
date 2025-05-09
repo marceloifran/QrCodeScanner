@@ -13,7 +13,7 @@ import {
   Animated,
   Dimensions,
 } from "react-native";
-import { Camera, CameraView } from "expo-camera";
+import { Camera } from "expo-camera";
 import {
   collection,
   query,
@@ -43,6 +43,19 @@ function formatMoney(value) {
 const { width } = Dimensions.get("window");
 const scanAreaWidth = width * 0.8;
 const scanAreaHeight = scanAreaWidth * 0.7;
+
+// Constantes para tipos de códigos
+const BARCODE_TYPES = {
+  qr: "qr",
+  ean13: "ean13",
+  ean8: "ean8",
+  code128: "code128",
+  code39: "code39",
+  code93: "code93",
+  codabar: "codabar",
+  itf14: "itf14",
+  upc_e: "upc-e",
+};
 
 export default function ScanProductScreen({ navigation, route }) {
   const [hasPermission, setHasPermission] = useState(null);
@@ -611,20 +624,24 @@ export default function ScanProductScreen({ navigation, route }) {
       {scanning ? (
         // === VISTA DE ESCANEO ===
         <View style={styles.scanContainer}>
-          <CameraView
-            style={styles.camera}
-            onBarcodeScanned={
-              scanning && !loading && !alertActive
-                ? handleBarCodeScanned
-                : undefined
-            }
-            barcodeScannerSettings={{
-              barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e"],
-              interval: 3000,
-            }}
-            cameraType="back"
-            flashMode="auto"
-          >
+          <View style={styles.camera}>
+            <Camera
+              style={StyleSheet.absoluteFillObject}
+              onBarCodeScanned={scanning ? handleBarCodeScanned : undefined}
+              barCodeScannerSettings={{
+                barCodeTypes: [
+                  BARCODE_TYPES.qr,
+                  BARCODE_TYPES.ean13,
+                  BARCODE_TYPES.ean8,
+                  BARCODE_TYPES.code128,
+                  BARCODE_TYPES.code39,
+                  BARCODE_TYPES.code93,
+                  BARCODE_TYPES.codabar,
+                  BARCODE_TYPES.itf14,
+                  BARCODE_TYPES.upc_e,
+                ],
+              }}
+            />
             <View style={styles.overlay}>
               <Text style={styles.scanText}>Escanea el código de barras</Text>
 
@@ -672,7 +689,7 @@ export default function ScanProductScreen({ navigation, route }) {
                 Posiciona el código de barras dentro del cuadro
               </Text>
             </View>
-          </CameraView>
+          </View>
         </View>
       ) : (
         // === VISTA DEL CARRITO ===

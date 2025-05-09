@@ -5,6 +5,7 @@ import AppNavigator from './navigation/AppNavigator';
 import { app, auth } from './firebase/config'; // Importa para asegurar la inicialización
 import { registerForPushNotificationsAsync } from './services/NotificationService';
 import { validateUserSubscription } from './utils/subscriptionUtils';
+import { onAuthStateChanged } from 'firebase/auth';
 
 export default function App() {
   const [notification, setNotification] = useState(false);
@@ -34,17 +35,15 @@ export default function App() {
 
   // Verificar estado de suscripción al iniciar la app
   useEffect(() => {
-    const checkSubscriptionOnStartup = async () => {
+    const checkSubscriptionOnStartup = async (user) => {
       try {
-        // Verificar si el usuario está autenticado
-        const currentUser = auth.currentUser;
-        if (!currentUser) {
+        if (!user) {
           console.log('No hay usuario autenticado para verificar suscripción');
           return;
         }
 
         console.log('Verificando suscripción al iniciar la app...');
-        const result = await validateUserSubscription(currentUser.uid);
+        const result = await validateUserSubscription(user.uid);
         
         if (result.isValid) {
           console.log(`Suscripción válida: ${result.planId}. Expira: ${result.expirationDate}`);
@@ -56,7 +55,14 @@ export default function App() {
       }
     };
 
-    checkSubscriptionOnStartup();
+    // Usar onAuthStateChanged para manejar los cambios de autenticación
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        checkSubscriptionOnStartup(user);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   return (

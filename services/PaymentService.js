@@ -487,3 +487,32 @@ export const getMercadoPagoAppUrl = (preferenceId) => {
   // así forzamos a usar el WebView
   return `mercadopago://checkout/preferences/${preferenceId}`;
 };
+
+/**
+ * Función para activar/desactivar el uso del backend local para pruebas
+ * @param {boolean} useLocal - Si se debe usar el backend local
+ * @returns {Promise<void>}
+ */
+export const toggleLocalBackendTesting = async (useLocal) => {
+  try {
+    await AsyncStorage.setItem('@use_local_backend', useLocal ? 'true' : 'false');
+    console.log(`Backend local ${useLocal ? 'activado' : 'desactivado'} para pruebas`);
+  } catch (error) {
+    console.error('Error al cambiar configuración de backend local:', error);
+    throw error;
+  }
+};
+
+/**
+ * Función para verificar si se está usando el backend local para pruebas
+ * @returns {Promise<boolean>}
+ */
+export const isUsingLocalBackend = async () => {
+  try {
+    const value = await AsyncStorage.getItem('@use_local_backend');
+    return value === 'true';
+  } catch (error) {
+    console.error('Error al verificar configuración de backend local:', error);
+    return false;
+  }
+};

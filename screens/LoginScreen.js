@@ -12,111 +12,19 @@ import {
   SafeAreaView,
   Alert,
 } from "react-native";
-import {
-  signInWithEmailAndPassword,
-  GoogleAuthProvider,
-  signInWithCredential,
-} from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase/config";
 import { colors } from "../theme/colors";
-// Comentar esta importación si sigue dando problemas
-// import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import * as Google from "expo-auth-session/providers/google";
-import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Svg, Path } from "react-native-svg";
-
-// Componente para el ícono de Google
-const GoogleIcon = () => (
-  <View style={styles.googleIconContainer}>
-    <Svg width="18" height="18" viewBox="0 0 48 48">
-      <Path
-        fill="#4285F4"
-        d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"
-      />
-      <Path
-        fill="#34A853"
-        d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"
-      />
-      <Path
-        fill="#FBBC05"
-        d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7z"
-      />
-      <Path
-        fill="#EA4335"
-        d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"
-      />
-    </Svg>
-  </View>
-);
-
-// Registrar el navegador web para manejar la redirección de autenticación
-WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const navigation = useNavigation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  // Configuración de autenticación con Google
-  // IMPORTANTE: Reemplaza estos valores con tus propios IDs de Google
-  // Para obtenerlos:
-  // 1. Ve a https://console.firebase.google.com/ y abre tu proyecto
-  // 2. Ve a Authentication > Sign-in method > Google y habilita Google Sign-In
-  // 3. Para los IDs de cliente, ve a Project Settings > General > Your apps
-  // 4. Si no tienes apps configuradas, agrega una app para Android y otra para iOS
-  // 5. Para Android, necesitas el SHA-1 de tu aplicación
-  // 6. Para iOS, necesitas el Bundle ID
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId:
-      "798991172649-hpgvfp0o2g6g4dqihn3u8a1bpnpq7kri.apps.googleusercontent.com", // ID para Android
-    iosClientId:
-      "798991172649-hpgvfp0o2g6g4dqihn3u8a1bpnpq7kri.apps.googleusercontent.com", // ID para iOS
-    expoClientId:
-      "798991172649-hpgvfp0o2g6g4dqihn3u8a1bpnpq7kri.apps.googleusercontent.com", // ID para Expo (opcional)
-    responseType: "id_token",
-    scopes: ["profile", "email"],
-    usePKCE: false,
-  });
-
-  // Manejar la respuesta de Google Auth
-  React.useEffect(() => {
-    if (response?.type === "success") {
-      const { id_token } = response.params;
-      handleGoogleLogin(id_token);
-    } else if (response?.type === "error") {
-      console.error("Error de autenticación con Google:", response.error);
-      const errorMsg = handleGoogleAuthError(response.error);
-      Alert.alert("Error de autenticación", errorMsg);
-      setGoogleLoading(false);
-    }
-  }, [response]);
-
-  // Manejar errores específicos de Google Auth
-  const handleGoogleAuthError = (error) => {
-    if (error?.error === "idpiframe_initialization_failed") {
-      return "Error de inicialización. Verifica la configuración de Firebase y los IDs de cliente.";
-    }
-    if (error?.error === "popup_closed_by_user") {
-      return "Autenticación cancelada por el usuario.";
-    }
-    if (error?.error === "access_denied") {
-      return "Acceso denegado. Verifica los permisos de tu aplicación en la consola de Google.";
-    }
-    if (error?.error === "immediate_failed") {
-      return "Error de autenticación silenciosa. Intenta iniciar sesión nuevamente.";
-    }
-    if (error?.error === "invalid_client") {
-      return "ID de cliente inválido. Verifica la configuración en Firebase.";
-    }
-
-    return "Hubo un problema al iniciar sesión con Google. Por favor intenta de nuevo.";
-  };
 
   // Iniciar sesión con correo y contraseña
   const handleEmailLogin = async () => {
@@ -150,70 +58,6 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
-  };
-
-  // Iniciar sesión con Google
-  const handleGoogleLogin = async (idToken) => {
-    try {
-      setGoogleLoading(true);
-
-      // Crear credencial para Firebase
-      const credential = GoogleAuthProvider.credential(idToken);
-
-      // Iniciar sesión con credencial
-      await signInWithCredential(auth, credential);
-
-      // Guardar información de que el usuario inició sesión con Google
-      await AsyncStorage.setItem("loginMethod", "google");
-    } catch (error) {
-      console.error("Error al iniciar sesión con Google:", error);
-      Alert.alert(
-        "Error",
-        "No se pudo iniciar sesión con Google. Inténtalo de nuevo."
-      );
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
-
-  // Iniciar flujo de autenticación con Google
-  const signInWithGoogle = async () => {
-    if (!request) {
-      Alert.alert(
-        "Error de configuración",
-        "No se pudo iniciar la autenticación con Google. Verifica que los IDs de cliente estén correctamente configurados en Firebase.",
-        [
-          {
-            text: "Más información",
-            onPress: () => checkGoogleConfig(),
-          },
-          { text: "OK" },
-        ]
-      );
-      return;
-    }
-
-    try {
-      setGoogleLoading(true);
-      await promptAsync();
-    } catch (error) {
-      console.error("Error al abrir autenticación de Google:", error);
-      Alert.alert("Error", "No se pudo iniciar la autenticación con Google");
-      setGoogleLoading(false);
-    }
-  };
-
-  // Verificar la configuración de Google
-  const checkGoogleConfig = () => {
-    Alert.alert(
-      "Configuración de Google",
-      "Para solucionar el problema:\n\n" +
-        "1. Verifica que hayas habilitado Google como proveedor en Firebase Console.\n" +
-        "2. Asegúrate de que los IDs de cliente en el código coincidan con los de tu proyecto en Firebase.\n" +
-        "3. Para Android, verifica que hayas agregado la huella SHA-1 correcta.\n" +
-        "4. Para iOS, confirma que el Bundle ID sea correcto.\n" +
-        "5. Asegúrate de que tu aplicación esté registrada en la consola de Google Cloud."
-    );
   };
 
   return (
@@ -297,29 +141,6 @@ export default function LoginScreen() {
                 Olvidé mi contraseña
               </Text>
             </TouchableOpacity>
-
-            <View style={styles.orContainer}>
-              <View style={styles.divider} />
-              <Text style={styles.orText}>o</Text>
-              <View style={styles.divider} />
-            </View>
-
-            <TouchableOpacity
-              style={styles.googleButton}
-              onPress={signInWithGoogle}
-              disabled={googleLoading}
-            >
-              {googleLoading ? (
-                <ActivityIndicator color="black" size="small" />
-              ) : (
-                <>
-                  <GoogleIcon />
-                  <Text style={styles.googleButtonText}>
-                    Continuar con Google
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
           </View>
 
           <View style={styles.footer}>
@@ -331,15 +152,6 @@ export default function LoginScreen() {
               <Text style={styles.registerButtonText}>Regístrate</Text>
             </TouchableOpacity>
           </View>
-
-          {__DEV__ && (
-            <TouchableOpacity
-              style={styles.devHelp}
-              onPress={checkGoogleConfig}
-            >
-              <Text style={styles.devHelpText}>Ayuda para desarrolladores</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -420,38 +232,6 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 14,
   },
-  orContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 20,
-  },
-  divider: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#eee",
-  },
-  orText: {
-    marginHorizontal: 10,
-    color: "#999",
-    fontSize: 14,
-  },
-  googleButton: {
-    flexDirection: "row",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    height: 50,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  googleIconContainer: {
-    marginRight: 10,
-  },
-  googleButtonText: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
   footer: {
     marginTop: "auto",
     paddingVertical: 20,
@@ -471,14 +251,5 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "bold",
     fontSize: 14,
-  },
-  devHelp: {
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  devHelpText: {
-    fontSize: 12,
-    color: "#999",
-    textDecorationLine: "underline",
   },
 });
