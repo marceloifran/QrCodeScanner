@@ -12,6 +12,7 @@ import {
   SafeAreaView,
   Modal,
   Image,
+  Button,
 } from "react-native";
 import {
   collection,
@@ -24,7 +25,12 @@ import {
   getDoc,
   setDoc,
 } from "firebase/firestore";
-import { db, auth } from "../firebase/config";
+import {
+  db,
+  auth,
+  reconnectFirestore,
+  diagnoseFirestoreConnection,
+} from "../firebase/config";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { formatPrice } from "../utils/formatters";
@@ -36,12 +42,65 @@ import {
 import { validateUserSubscription } from "../utils/subscriptionUtils";
 import CacheService from "../utils/cacheService";
 
+// Componentes internos (implementaciones simples)
+const LowStockCard = ({ product, onPress }) => (
+  <TouchableOpacity style={styles.lowStockCard} onPress={onPress}>
+    <View style={styles.lowStockHeader}>
+      <Text style={styles.lowStockName} numberOfLines={1}>
+        {product.name}
+      </Text>
+      <View style={styles.stockBadge}>
+        <Text style={styles.stockBadgeText}>{product.stock}</Text>
+      </View>
+    </View>
+    <Text style={styles.lowStockCategory}>
+      {product.category || "Sin categoría"}
+    </Text>
+    <Text style={styles.lowStockPrice}>{formatPrice(product.price)}</Text>
+  </TouchableOpacity>
+);
+
+const StatsCard = ({ title, value, icon, color, onPress }) => (
+  <TouchableOpacity style={styles.statsCard} onPress={onPress}>
+    <View
+      style={[styles.statsIconContainer, { backgroundColor: color + "20" }]}
+    >
+      <Ionicons name={icon} size={24} color={color} />
+    </View>
+    <Text style={styles.statsTitle}>{title}</Text>
+    <Text style={styles.statsValue}>{value}</Text>
+  </TouchableOpacity>
+);
+
+const RecentSaleCard = ({ sale, onPress }) => (
+  <TouchableOpacity style={styles.saleCard} onPress={onPress}>
+    <View style={styles.saleHeader}>
+      <Text style={styles.saleDate}>
+        {sale.date
+          ? new Date(sale.date.seconds * 1000).toLocaleDateString()
+          : "Fecha desconocida"}
+      </Text>
+      <Text style={styles.saleTotal}>{formatPrice(sale.total)}</Text>
+    </View>
+    <Text style={styles.saleItems}>{sale.items?.length || 0} productos</Text>
+  </TouchableOpacity>
+);
+
+const CustomHeader = ({ title, rightComponent }) => (
+  <View style={styles.customHeader}>
+    <Text style={styles.headerTitle}>{title}</Text>
+    {rightComponent}
+  </View>
+);
+
 export default function DashboardScreen({ navigation }) {
   const [recentSales, setRecentSales] = useState([]);
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [categoryCounts, setCategoryCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [connectionError, setConnectionError] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [stats, setStats] = useState({
     totalProducts: 0,
     lowStockCount: 0,
@@ -60,18 +119,125 @@ export default function DashboardScreen({ navigation }) {
   const [subscriptionMessage, setSubscriptionMessage] = useState("");
 
   useEffect(() => {
-    loadDashboardData();
-    checkNotifications();
-    loadCategories();
-    checkSubscriptionStatus();
+    // Verificamos la autenticación primero
+    if (!auth.currentUser) {
+      console.log("No hay usuario autenticado");
+      navigation.replace("Login");
+      return;
+    }
+
+    console.log("Usuario autenticado:", auth.currentUser.email);
+    loadInitialData();
+
+    // Limpiar caché potencialmente corrupto al iniciar
+    const cleanupCache = async () => {
+      try {
+        await CacheService.cleanupCache();
+      } catch (error) {
+        console.error("Error al limpiar caché:", error);
+      }
+    };
+
+    cleanupCache();
   }, []);
+
+  const loadInitialData = async () => {
+    try {
+      // Reiniciar estado de error de conexión
+      setConnectionError(false);
+
+      // Cargar datos principales
+      await loadDashboardData();
+      await checkNotifications();
+      await loadCategories();
+      await checkSubscriptionStatus();
+
+      console.log("Todos los datos iniciales cargados con éxito");
+    } catch (error) {
+      console.error("Error cargando datos iniciales:", error);
+      setConnectionError(true);
+
+      // Mostrar datos de caché en caso de error
+      loadEmergencyData();
+    }
+  };
+
+  const handleReconnect = async () => {
+    setReconnecting(true);
+
+    try {
+      // Intentar reconectar Firestore
+      const reconnected = await reconnectFirestore();
+
+      if (reconnected) {
+        // Si reconectamos, intentar cargar datos de nuevo
+        console.log("Reconexión exitosa, cargando datos...");
+        await loadInitialData();
+      } else {
+        Alert.alert(
+          "Error de conexión",
+          "No se pudo restablecer la conexión. Por favor, verifica tu conexión a internet y vuelve a intentarlo."
+        );
+      }
+    } catch (error) {
+      console.error("Error durante la reconexión:", error);
+      Alert.alert(
+        "Error de conexión",
+        "Ocurrió un problema al intentar reconectar. Inténtalo nuevamente."
+      );
+    } finally {
+      setReconnecting(false);
+    }
+  };
+
+  // Cargar datos de emergencia desde caché si hay error de conexión
+  const loadEmergencyData = async () => {
+    try {
+      console.log("Cargando datos de emergencia desde caché...");
+      if (!auth.currentUser) return;
+
+      const userId = auth.currentUser.uid;
+
+      // Intentar cargar productos de emergencia
+      const emergencyProducts =
+        await CacheService.getFromCacheForceIgnoreExpiration(
+          "products",
+          userId
+        );
+
+      if (emergencyProducts && emergencyProducts.length > 0) {
+        console.log(
+          `Cargados ${emergencyProducts.length} productos de emergencia`
+        );
+        analyzeProductData(emergencyProducts);
+      }
+
+      // Intentar cargar ventas de emergencia
+      const emergencySales =
+        await CacheService.getFromCacheForceIgnoreExpiration("sales", userId);
+
+      if (emergencySales && emergencySales.length > 0) {
+        console.log(`Cargadas ${emergencySales.length} ventas de emergencia`);
+        const recentSalesData = emergencySales.slice(0, 5);
+        setRecentSales(recentSalesData);
+        calculateSalesStats(emergencySales);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error("Error cargando datos de emergencia:", error);
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("focus", () => {
-      loadDashboardData();
-      checkNotifications();
-      loadCategories();
-      checkSubscriptionStatus();
+      if (auth.currentUser) {
+        loadDashboardData();
+        checkNotifications();
+        loadCategories();
+        checkSubscriptionStatus();
+      }
     });
 
     return unsubscribe;
@@ -115,148 +281,97 @@ export default function DashboardScreen({ navigation }) {
 
   const loadDashboardData = async () => {
     setLoading(true);
+    console.log("Cargando datos del dashboard...");
+
     try {
-      // Verificar que el usuario esté autenticado
-      if (!auth.currentUser || !auth.currentUser.uid) {
+      if (!auth.currentUser) {
+        console.log("No hay usuario autenticado");
         setLoading(false);
-        setRefreshing(false);
         return;
       }
 
       const userId = auth.currentUser.uid;
-      let productsData = [];
-      let salesData = [];
+      console.log(`Usuario: ${userId}`);
 
-      // Try to get data from cache first
-      const useCache = !refreshing; // No usar caché si el usuario está haciendo un "pull to refresh"
-
-      if (useCache) {
-        // Intentar cargar productos desde caché
-        const cachedProducts = await CacheService.getFromCache(
-          "products",
-          userId
-        );
-        if (cachedProducts) {
-          productsData = cachedProducts;
-        }
-
-        // Intentar cargar ventas desde caché
-        const cachedSales = await CacheService.getFromCache("sales", userId);
-        if (cachedSales) {
-          salesData = cachedSales;
-        }
-      }
-
-      // Si no tenemos datos en caché, cargar desde Firestore
-      if (productsData.length === 0) {
-        // Cargar productos
+      // 1. CARGAR PRODUCTOS - Consulta directa sin complicaciones
+      try {
+        console.log("Cargando productos...");
         const productsQuery = query(
           collection(db, "products"),
           where("userId", "==", userId)
         );
-        const productsSnapshot = await getDocs(productsQuery);
-        productsData = productsSnapshot.docs.map((doc) => ({
+
+        const querySnapshot = await getDocs(productsQuery);
+        console.log(`Productos encontrados: ${querySnapshot.size}`);
+
+        const productsData = querySnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
 
-        // Guardar en caché para uso futuro
-        if (productsData.length > 0) {
-          await CacheService.saveToCache("products", productsData, userId);
+        // Guardar en caché y analizar datos
+        await CacheService.saveToCache("products", productsData, userId);
+        analyzeProductData(productsData);
+      } catch (error) {
+        console.error("Error al cargar productos:", error);
+        // Intentar desde caché si falla
+        const cachedProducts =
+          await CacheService.getFromCacheForceIgnoreExpiration(
+            "products",
+            userId
+          );
+
+        if (cachedProducts && cachedProducts.length > 0) {
+          console.log(`Usando ${cachedProducts.length} productos desde caché`);
+          analyzeProductData(cachedProducts);
+        } else {
+          analyzeProductData([]);
         }
       }
 
-      if (salesData.length === 0) {
-        // Cargar ventas
+      // 2. CARGAR VENTAS - Consulta directa
+      try {
+        console.log("Cargando ventas...");
         const salesQuery = query(
           collection(db, "sales"),
-          where("userId", "==", userId)
+          where("userId", "==", userId),
+          orderBy("date", "desc"),
+          limit(50)
         );
-        const salesSnapshot = await getDocs(salesQuery);
-        salesData = salesSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            date: data.date?.toDate ? data.date.toDate() : new Date(),
-            total: data.total || 0,
-          };
-        });
 
-        // Guardar en caché para uso futuro
-        if (salesData.length > 0) {
-          await CacheService.saveToCache("sales", salesData, userId);
+        const querySnapshot = await getDocs(salesQuery);
+        console.log(`Ventas encontradas: ${querySnapshot.size}`);
+
+        const salesData = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        // Guardar en caché y actualizar UI
+        await CacheService.saveToCache("sales", salesData, userId);
+        const recentSalesData = salesData.slice(0, 5);
+        setRecentSales(recentSalesData);
+        calculateSalesStats(salesData);
+      } catch (error) {
+        console.error("Error al cargar ventas:", error);
+        // Intentar desde caché si falla
+        const cachedSales =
+          await CacheService.getFromCacheForceIgnoreExpiration("sales", userId);
+
+        if (cachedSales && cachedSales.length > 0) {
+          console.log(`Usando ${cachedSales.length} ventas desde caché`);
+          const recentSalesData = cachedSales.slice(0, 5);
+          setRecentSales(recentSalesData);
+          calculateSalesStats(cachedSales);
+        } else {
+          setRecentSales([]);
         }
       }
 
-      // Contar productos totales
-      const totalProducts = productsData ? productsData.length : 0;
-
-      // Calcular valor total del inventario
-      const inventoryValue = productsData
-        ? productsData.reduce((total, product) => {
-            const price = product.price || 0;
-            const stock = product.stock || 0;
-            return total + price * stock;
-          }, 0)
-        : 0;
-
-      // Filtrar productos con stock bajo
-      const lowStockData = productsData
-        ? productsData.filter((product) => {
-            const threshold = product.lowStockThreshold || 5;
-            const stock = product.stock || 0;
-            return stock <= threshold;
-          })
-        : [];
-
-      // Contar productos con stock bajo
-      const lowStockCount = lowStockData ? lowStockData.length : 0;
-
-      // Contar productos por categoría
-      const categoryCountsData = {};
-      if (productsData && productsData.length > 0) {
-        productsData.forEach((product) => {
-          const category = product.category || "sin-categoria";
-          categoryCountsData[category] =
-            (categoryCountsData[category] || 0) + 1;
-        });
-      }
-
-      setCategoryCounts(categoryCountsData || {});
-      setLowStockProducts(
-        lowStockData && lowStockData.length > 0 ? lowStockData.slice(0, 5) : []
-      );
-
-      // Ordenar ventas por fecha para mostrar las más recientes
-      const sortedSales =
-        salesData && salesData.length > 0
-          ? [...salesData].sort((a, b) => b.date - a.date)
-          : [];
-
-      // Contar ventas totales (todas, no solo las recientes)
-      const totalSales = salesData ? salesData.length : 0;
-
-      // Calcular ingresos totales
-      const totalIncome = salesData
-        ? salesData.reduce((sum, sale) => sum + (sale.total || 0), 0)
-        : 0;
-
-      setRecentSales(
-        sortedSales && sortedSales.length > 0 ? sortedSales.slice(0, 5) : []
-      );
-
-      // Actualizar estadísticas
-      setStats({
-        totalProducts: totalProducts || 0,
-        lowStockCount: lowStockCount || 0,
-        totalSales: totalSales || 0,
-        totalIncome: totalIncome || 0,
-        inventoryValue: inventoryValue || 0,
-      });
+      console.log("Carga de datos completada");
     } catch (error) {
-      console.error("Error al cargar datos del dashboard:", error);
-      Alert.alert("Error", "No se pudieron cargar los datos");
+      console.error("Error general:", error);
+      loadEmergencyData();
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -646,11 +761,119 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
+  // Analiza datos de productos para estadísticas
+  const analyzeProductData = (productsData) => {
+    // Contar productos totales
+    const totalProducts = productsData ? productsData.length : 0;
+
+    // Calcular valor total del inventario
+    const inventoryValue = productsData
+      ? productsData.reduce((total, product) => {
+          const price = product.price || 0;
+          const stock = product.stock || 0;
+          return total + price * stock;
+        }, 0)
+      : 0;
+
+    // Filtrar productos con stock bajo
+    const lowStockData = productsData
+      ? productsData.filter((product) => {
+          const threshold = product.lowStockThreshold || 5;
+          const stock = product.stock || 0;
+          return stock <= threshold;
+        })
+      : [];
+
+    // Contar productos con stock bajo
+    const lowStockCount = lowStockData ? lowStockData.length : 0;
+
+    // Contar productos por categoría
+    const categoryCountsData = {};
+    if (productsData && productsData.length > 0) {
+      productsData.forEach((product) => {
+        const category = product.category || "sin-categoria";
+        categoryCountsData[category] = (categoryCountsData[category] || 0) + 1;
+      });
+    }
+
+    // Actualizar estados relacionados con productos
+    setCategoryCounts(categoryCountsData || {});
+    setLowStockProducts(
+      lowStockData && lowStockData.length > 0 ? lowStockData.slice(0, 5) : []
+    );
+
+    // Guardar estadísticas parciales de productos
+    setStats((prevStats) => ({
+      ...prevStats,
+      totalProducts: totalProducts || 0,
+      lowStockCount: lowStockCount || 0,
+      inventoryValue: inventoryValue || 0,
+    }));
+  };
+
+  // Calcula estadísticas de ventas
+  const calculateSalesStats = (salesData) => {
+    // Contar ventas totales
+    const totalSales = salesData ? salesData.length : 0;
+
+    // Calcular ingresos totales
+    const totalIncome = salesData
+      ? salesData.reduce((sum, sale) => sum + (sale.total || 0), 0)
+      : 0;
+
+    // Actualizar estadísticas de ventas
+    setStats((prevStats) => ({
+      ...prevStats,
+      totalSales: totalSales || 0,
+      totalIncome: totalIncome || 0,
+    }));
+  };
+
   if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Cargando datos...</Text>
+      </View>
+    );
+  }
+
+  if (connectionError) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="cloud-offline" size={60} color="#d32f2f" />
+        <Text style={styles.errorTitle}>Problema de conexión</Text>
+        <Text style={styles.errorText}>
+          No se pudo conectar con la base de datos. Esto puede deberse a
+          problemas de conexión a internet o al servidor.
+        </Text>
+
+        <View style={styles.errorActions}>
+          {reconnecting ? (
+            <ActivityIndicator
+              size="small"
+              color={colors.primary}
+              style={{ marginBottom: 20 }}
+            />
+          ) : (
+            <TouchableOpacity
+              style={styles.reconnectButton}
+              onPress={handleReconnect}
+              disabled={reconnecting}
+            >
+              <Text style={styles.reconnectButtonText}>Reconectar</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={styles.offlineModeButton}
+            onPress={() => setConnectionError(false)}
+          >
+            <Text style={styles.offlineModeButtonText}>
+              Usar modo sin conexión
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -1026,15 +1249,29 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   saleCard: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    paddingBottom: 12,
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  saleHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
   },
   saleDate: {
     fontSize: 14,
-    fontWeight: "500",
-    color: colors.text.primary,
-    marginBottom: 4,
+    color: colors.text.secondary,
+  },
+  saleTotal: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: colors.primary,
   },
   saleItems: {
     fontSize: 13,
@@ -1054,36 +1291,49 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   lowStockCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    paddingVertical: 10,
+    backgroundColor: "#fff",
+    padding: 12,
+    borderRadius: 8,
+    marginRight: 12,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    width: 160,
   },
-  lowStockInfo: {
-    flex: 1,
+  lowStockHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 4,
+    alignItems: "center",
   },
   lowStockName: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "bold",
     color: colors.text.primary,
+    width: "70%",
+  },
+  stockBadge: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  stockBadgeText: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#fff",
+  },
+  lowStockCategory: {
+    fontSize: 12,
+    color: colors.text.secondary,
     marginBottom: 4,
   },
-  stockIndicatorContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  stockIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-    backgroundColor: "#f44336",
-  },
-  lowStockText: {
-    fontSize: 13,
-    color: "#f44336",
+  lowStockPrice: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: colors.primary,
   },
   floatingButtonsContainer: {
     position: "absolute",
@@ -1207,5 +1457,90 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 12,
     fontWeight: "bold",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 20,
+  },
+  errorText: {
+    textAlign: "center",
+    color: colors.text.secondary,
+    fontSize: 14,
+  },
+  errorActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  reconnectButton: {
+    backgroundColor: colors.primary,
+    padding: 12,
+    borderRadius: 8,
+  },
+  reconnectButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  offlineModeButton: {
+    backgroundColor: "#2196f3",
+    padding: 12,
+    borderRadius: 8,
+  },
+  offlineModeButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  statsCard: {
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 12,
+    flex: 1,
+    marginHorizontal: 6,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+    minHeight: 120,
+    justifyContent: "space-between",
+  },
+  statsIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  statsTitle: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginBottom: 4,
+  },
+  statsValue: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: colors.text.primary,
+  },
+  customHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: colors.text.primary,
   },
 });

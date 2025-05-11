@@ -12,8 +12,9 @@ import {
   Keyboard,
   Animated,
   Dimensions,
+  SafeAreaView,
 } from "react-native";
-import { Camera } from "expo-camera";
+import { Camera, CameraView } from "expo-camera";
 import {
   collection,
   query,
@@ -24,13 +25,20 @@ import {
   addDoc,
   updateDoc,
   serverTimestamp,
+  limit,
 } from "firebase/firestore";
-import { db, auth } from "../firebase/config";
+import { db, auth, reconnectFirestore } from "../firebase/config";
 import { Ionicons } from "@expo/vector-icons";
 import CacheService from "../utils/cacheService";
 
-// Si usas tu archivo "colors.js", ajusta la ruta de import
-// import { colors } from '../theme/colors';
+// Definir los colores aquí para no tener conflictos
+const colors = {
+  primary: "#28a745", // Verde principal
+  secondary: "#6c757d",
+  warning: "#ffc107",
+  danger: "#dc3545",
+  error: "#dc3545",
+};
 
 // Helper para formatear dinero
 function formatMoney(value) {
@@ -74,6 +82,8 @@ export default function ScanProductScreen({ navigation, route }) {
   const [processingOrder, setProcessingOrder] = useState(false);
   // Nuevo estado para almacenar todos los productos en caché
   const [cachedProducts, setCachedProducts] = useState(null);
+  const [connectionError, setConnectionError] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
 
   // Animación para la línea de escaneo
   const scanLineAnimation = useRef(new Animated.Value(0)).current;
@@ -110,7 +120,10 @@ export default function ScanProductScreen({ navigation, route }) {
   // Función para cargar productos al caché
   const loadProductsToCache = async () => {
     try {
-      if (!auth.currentUser) return;
+      if (!auth.currentUser) {
+        console.log("Usuario no autenticado, no se pueden cargar productos");
+        return;
+      }
 
       // Intentar obtener productos del caché primero
       const cachedData = await CacheService.getFromCache(
@@ -118,33 +131,76 @@ export default function ScanProductScreen({ navigation, route }) {
         auth.currentUser.uid
       );
 
-      if (cachedData) {
+      if (cachedData && cachedData.length > 0) {
         console.log("Usando productos en caché");
         setCachedProducts(cachedData);
         return;
       }
 
-      // Si no hay caché, cargar desde Firestore
+      // Si no hay caché, cargar desde Firestore con un timeout para evitar espera infinita
       console.log("Cargando productos desde Firestore");
-      const productsQuery = query(
-        collection(db, "products"),
-        where("userId", "==", auth.currentUser.uid)
-      );
-      const querySnapshot = await getDocs(productsQuery);
-      const productsData = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
 
-      // Guardar en caché y en estado
-      await CacheService.saveToCache(
-        "products",
-        productsData,
-        auth.currentUser.uid
-      );
-      setCachedProducts(productsData);
+      // Crear una promesa con timeout para evitar quedarse esperando
+      const fetchWithTimeout = new Promise(async (resolve, reject) => {
+        // Configurar un timeout de 10 segundos
+        const timeoutId = setTimeout(() => {
+          console.log("Timeout al cargar productos desde Firestore");
+          reject(new Error("Timeout al cargar productos"));
+        }, 10000);
+
+        try {
+          const productsQuery = query(
+            collection(db, "products"),
+            where("userId", "==", auth.currentUser.uid)
+          );
+          const querySnapshot = await getDocs(productsQuery);
+          const productsData = querySnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+
+          // Limpiar el timeout ya que la operación se completó
+          clearTimeout(timeoutId);
+          resolve(productsData);
+        } catch (error) {
+          clearTimeout(timeoutId);
+          reject(error);
+        }
+      });
+
+      try {
+        const productsData = await fetchWithTimeout;
+
+        // Guardar en caché y en estado
+        if (productsData.length > 0) {
+          await CacheService.saveToCache(
+            "products",
+            productsData,
+            auth.currentUser.uid
+          );
+          setCachedProducts(productsData);
+        } else {
+          // Si no hay productos, guardar un array vacío en el estado
+          setCachedProducts([]);
+        }
+      } catch (timeoutError) {
+        console.error("Error de timeout:", timeoutError);
+        // En caso de timeout, inicializar con array vacío para evitar pantalla de carga infinita
+        setCachedProducts([]);
+        // Intentar cargar cualquier dato en caché sin importar si expiró
+        const emergencyData =
+          await CacheService.getFromCacheForceIgnoreExpiration(
+            "products",
+            auth.currentUser.uid
+          );
+        if (emergencyData && emergencyData.length > 0) {
+          setCachedProducts(emergencyData);
+        }
+      }
     } catch (error) {
       console.error("Error al cargar productos al caché:", error);
+      // En caso de cualquier error, inicializar con array vacío
+      setCachedProducts([]);
     }
   };
 
@@ -165,7 +221,7 @@ export default function ScanProductScreen({ navigation, route }) {
     // Desactivar el escaneo inmediatamente
     setScanning(false);
     setLoading(true);
-    
+
     // Prevenir múltiples escaneos del mismo código de barras
     // creando un bloqueo temporal para procesar solo un escaneo a la vez
     processBarcode(data);
@@ -174,87 +230,40 @@ export default function ScanProductScreen({ navigation, route }) {
   const processBarcode = async (barcode) => {
     console.log("Procesando código de barras:", barcode);
     try {
-      // Buscar en caché primero si está disponible
+      // 1. PRIMERO: Buscar en caché local para respuesta instantánea
       if (cachedProducts) {
-        console.log("Buscando producto en caché local");
+        console.log("Buscando producto en caché local...");
         const cachedProduct = cachedProducts.find((p) => p.barcode === barcode);
 
         if (cachedProduct) {
-          console.log("Producto encontrado en caché:", cachedProduct.name);
-
-          // Verificar stock
-          if (cachedProduct.stock <= 0) {
-            Alert.alert(
-              "Sin stock",
-              "Este producto no tiene unidades disponibles"
-            );
-            // Reactivar el escaneo después de un breve retraso
-            setTimeout(() => {
-              setLoading(false);
-              setScanning(true);
-            }, 1500);
-            return;
-          }
-
-          // Buscar en el carrito
-          const existingItemIndex = cart.findIndex(
-            (item) => item.id === cachedProduct.id
-          );
-
-          if (existingItemIndex !== -1) {
-            // Aumentar cantidad si ya está en el carrito
-            const updatedCart = [...cart];
-            const newQuantity = updatedCart[existingItemIndex].quantity + 1;
-            if (newQuantity > cachedProduct.stock) {
-              Alert.alert(
-                "Stock insuficiente",
-                `Solo hay ${cachedProduct.stock} unidades disponibles`
-              );
-              // Reactivar el escaneo después de un breve retraso
-              setTimeout(() => {
-                setLoading(false);
-                setScanning(true);
-              }, 1500);
-              return;
-            }
-            updatedCart[existingItemIndex].quantity = newQuantity;
-            setCart(updatedCart);
-          } else {
-            // Agregar nuevo item
-            setCart([
-              ...cart,
-              {
-                id: cachedProduct.id,
-                barcode: cachedProduct.barcode,
-                name: cachedProduct.name,
-                price: cachedProduct.price,
-                quantity: 1,
-                stock: cachedProduct.stock,
-              },
-            ]);
-          }
-
-          // Reactivar el escaneo después de un breve retraso
-          setTimeout(() => {
-            setLoading(false);
-            setScanning(true);
-          }, 1500);
+          console.log("¡Producto encontrado en caché local!");
+          addProductToCart(cachedProduct);
+          setLoading(false);
+          setScanning(true);
           return;
+        } else {
+          console.log("Producto no encontrado en caché, consultando Firestore");
         }
       }
 
-      // Si no está en caché o no hay caché, buscar en Firestore
-      console.log("Producto no encontrado en caché, buscando en Firestore");
-      const productsQuery = query(
-        collection(db, "products"),
+      // 2. BUSCAR DIRECTAMENTE EN FIRESTORE
+      console.log(`Buscando producto con barcode=${barcode} en Firestore`);
+
+      const productsRef = collection(db, "products");
+      const q = query(
+        productsRef,
         where("barcode", "==", barcode),
         where("userId", "==", auth.currentUser.uid)
       );
-      const querySnapshot = await getDocs(productsQuery);
+
+      const querySnapshot = await getDocs(q);
+
+      console.log(
+        `Respuesta Firestore recibida: ${querySnapshot.docs.length} documentos`
+      );
 
       if (querySnapshot.empty) {
-        // Producto no encontrado
-        console.log("Producto no encontrado para el código:", barcode);
+        console.log("Producto no encontrado en Firestore");
         setAlertActive(true);
         Alert.alert(
           "Producto no encontrado",
@@ -265,92 +274,127 @@ export default function ScanProductScreen({ navigation, route }) {
           setScanning(true);
           setAlertActive(false);
         }, 1000);
-      } else {
-        // Producto encontrado
-        const productData = querySnapshot.docs[0].data();
-        const product = {
-          id: querySnapshot.docs[0].id,
-          ...productData,
-        };
-        console.log("Producto encontrado:", product.name);
+        return;
+      }
 
-        // Añadir/actualizar en el caché local
-        if (cachedProducts) {
-          const updatedCache = [...cachedProducts];
-          const existingIndex = updatedCache.findIndex(
-            (p) => p.id === product.id
-          );
+      // Obtener datos del producto y convertir a objeto
+      const productDoc = querySnapshot.docs[0];
+      const productData = productDoc.data();
 
-          if (existingIndex >= 0) {
-            updatedCache[existingIndex] = product;
-          } else {
-            updatedCache.push(product);
-          }
+      if (!productData || !productData.name) {
+        console.log("Datos del producto incompletos:", productData || "vacío");
+        throw new Error("Datos del producto incompletos");
+      }
 
-          setCachedProducts(updatedCache);
-          // También actualizar caché persistente
-          await CacheService.saveToCache(
+      const product = {
+        id: productDoc.id,
+        ...productData,
+      };
+
+      console.log("Producto encontrado en Firestore:", product.name);
+
+      // Añadir/actualizar caché para futuras consultas
+      if (cachedProducts) {
+        const updatedCache = [...cachedProducts];
+        const existingIndex = updatedCache.findIndex(
+          (p) => p.id === product.id
+        );
+
+        if (existingIndex >= 0) {
+          updatedCache[existingIndex] = product;
+        } else {
+          updatedCache.push(product);
+        }
+
+        setCachedProducts(updatedCache);
+
+        // Guardar caché en segundo plano
+        CacheService.saveToCache(
+          "products",
+          updatedCache,
+          auth.currentUser.uid
+        ).catch((error) => console.error("Error guardar caché:", error));
+      }
+
+      // Agregar al carrito
+      addProductToCart(product);
+
+      // Reactivar escaneo
+      setLoading(false);
+      setScanning(true);
+    } catch (error) {
+      console.error("Error al procesar código:", error);
+
+      // Intentar recuperar de caché de emergencia
+      try {
+        const emergencyProducts =
+          await CacheService.getFromCacheForceIgnoreExpiration(
             "products",
-            updatedCache,
             auth.currentUser.uid
           );
-        }
 
-        if (product.stock <= 0) {
-          Alert.alert(
-            "Sin stock",
-            "Este producto no tiene unidades disponibles"
-          );
-          setTimeout(() => {
-            setLoading(false);
-            setScanning(true);
-          }, 1500);
-          return;
-        }
+        if (emergencyProducts && emergencyProducts.length > 0) {
+          const product = emergencyProducts.find((p) => p.barcode === barcode);
 
-        // Ver si ya está en el carrito
-        const existingItemIndex = cart.findIndex(
-          (item) => item.id === product.id
-        );
-        if (existingItemIndex !== -1) {
-          // Aumentar cantidad en 1
-          const updatedCart = [...cart];
-          const newQuantity = updatedCart[existingItemIndex].quantity + 1;
-          if (newQuantity > product.stock) {
-            Alert.alert(
-              "Stock insuficiente",
-              `Solo hay ${product.stock} unidades disponibles`
-            );
+          if (product) {
+            console.log("Producto encontrado en caché de emergencia");
+            addProductToCart(product);
             setLoading(false);
             setScanning(true);
             return;
           }
-          updatedCart[existingItemIndex].quantity = newQuantity;
-          setCart(updatedCart);
-        } else {
-          // Agregar nuevo item
-          setCart([
-            ...cart,
-            {
-              id: product.id,
-              barcode: product.barcode,
-              name: product.name,
-              price: product.price,
-              quantity: 1,
-              stock: product.stock,
-            },
-          ]);
         }
-        setLoading(false);
-        setScanning(true);
+      } catch (cacheError) {
+        console.error("Error al buscar en caché:", cacheError);
       }
-    } catch (error) {
-      console.error("Error procesando código de barras:", error);
-      Alert.alert("Error", "Ocurrió un error al procesar el código de barras");
-      setTimeout(() => {
-        setLoading(false);
-        setScanning(true);
-      }, 1500);
+
+      // Si llegamos aquí, no se encontró en ningún lado
+      Alert.alert(
+        "Error",
+        "Ocurrió un error al buscar el producto. Inténtalo nuevamente."
+      );
+      setLoading(false);
+      setScanning(true);
+    }
+  };
+
+  // Función auxiliar para agregar productos al carrito
+  const addProductToCart = (product) => {
+    // Verificar stock
+    if (product.stock <= 0) {
+      Alert.alert("Sin stock", "Este producto no tiene unidades disponibles");
+      return;
+    }
+
+    // Buscar en el carrito
+    const existingItemIndex = cart.findIndex((item) => item.id === product.id);
+
+    if (existingItemIndex !== -1) {
+      // Aumentar cantidad si ya está en el carrito
+      const updatedCart = [...cart];
+      const newQuantity = updatedCart[existingItemIndex].quantity + 1;
+      if (newQuantity > product.stock) {
+        Alert.alert(
+          "Stock insuficiente",
+          `Solo hay ${product.stock} unidades disponibles`
+        );
+        return;
+      }
+      updatedCart[existingItemIndex].quantity = newQuantity;
+      setCart(updatedCart);
+    } else {
+      // Agregar nuevo item
+      setCart([
+        ...cart,
+        {
+          id: product.id,
+          barcode: product.barcode,
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+          stock: product.stock,
+        },
+      ]);
     }
   };
 
@@ -370,7 +414,7 @@ export default function ScanProductScreen({ navigation, route }) {
       // Actualizar cantidad
       const updatedCart = [...cart];
       const newQuantity = updatedCart[existingItemIndex].quantity + quantity;
-      
+
       if (newQuantity > selectedProduct.stock) {
         Alert.alert(
           "Stock insuficiente",
@@ -378,7 +422,7 @@ export default function ScanProductScreen({ navigation, route }) {
         );
         return;
       }
-      
+
       updatedCart[existingItemIndex].quantity = newQuantity;
       setCart(updatedCart);
     } else {
@@ -400,10 +444,10 @@ export default function ScanProductScreen({ navigation, route }) {
     if (modalVisible) {
       setModalVisible(false);
     }
-    
+
     // Resetear el producto seleccionado
     setSelectedProduct(null);
-    
+
     // Reactivar el escaneo
     setScanning(true);
   };
@@ -614,6 +658,38 @@ export default function ScanProductScreen({ navigation, route }) {
     setCurrentQuantity(newQty.toString());
   };
 
+  // Añadir función para reconectar a Firestore
+  const handleReconnect = async () => {
+    setReconnecting(true);
+
+    try {
+      // Intentar reconectar Firestore
+      const reconnected = await reconnectFirestore();
+
+      if (reconnected) {
+        console.log("Reconexión exitosa, volviendo a intentar escanear...");
+        setConnectionError(false);
+        Alert.alert(
+          "Conexión restablecida",
+          "Se ha restablecido la conexión. Puedes continuar escaneando."
+        );
+      } else {
+        Alert.alert(
+          "Error de conexión",
+          "No se pudo restablecer la conexión. Por favor, verifica tu conexión a internet."
+        );
+      }
+    } catch (error) {
+      console.error("Error durante la reconexión:", error);
+      Alert.alert(
+        "Error de reconexión",
+        "Ocurrió un problema al intentar reconectar. Inténtalo nuevamente."
+      );
+    } finally {
+      setReconnecting(false);
+    }
+  };
+
   // Si todavía no hay permisos de cámara
   if (hasPermission === null) {
     return (
@@ -638,448 +714,522 @@ export default function ScanProductScreen({ navigation, route }) {
 
   // RENDER PRINCIPAL
   return (
-    <View style={styles.container}>
-      {scanning ? (
-        // === VISTA DE ESCANEO ===
-        <View style={styles.scanContainer}>
-          <View style={styles.camera}>
-            <Camera
-              style={StyleSheet.absoluteFillObject}
-              onBarCodeScanned={scanning ? handleBarCodeScanned : undefined}
-              barCodeScannerSettings={{
-                barCodeTypes: [
-                  BARCODE_TYPES.qr,
-                  BARCODE_TYPES.ean13,
-                  BARCODE_TYPES.ean8,
-                  BARCODE_TYPES.code128,
-                  BARCODE_TYPES.code39,
-                  BARCODE_TYPES.code93,
-                  BARCODE_TYPES.codabar,
-                  BARCODE_TYPES.itf14,
-                  BARCODE_TYPES.upc_e,
-                ],
-              }}
-            />
-          <CameraView
-            style={styles.camera}
-            onBarcodeScanned={
-              scanning && !loading && !alertActive
-                ? handleBarCodeScanned
-                : undefined
-            }
-            barcodeScannerSettings={{
-              barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e"],
-              interval: 2000,
-            }}
-            cameraType="back"
-            flashMode="auto"
-          >
-            <View style={styles.overlay}>
-              <Text style={styles.scanText}>Escanea el código de barras</Text>
+    <SafeAreaView style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        {connectionError ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="cloud-offline" size={60} color="#d32f2f" />
+            <Text style={styles.errorTitle}>Problema de conexión</Text>
+            <Text style={styles.errorText}>
+              No se pudo conectar con la base de datos para buscar productos.
+              Puedes intentar reconectar o usar el modo sin conexión.
+            </Text>
 
-              <View style={styles.scanArea}>
-                {/* Esquinas estilizadas */}
-                <View style={[styles.corner, styles.cornerTopLeft]}></View>
-                <View style={[styles.corner, styles.cornerTopRight]}></View>
-                <View style={[styles.corner, styles.cornerBottomLeft]}></View>
-                <View style={[styles.corner, styles.cornerBottomRight]}></View>
-
-                {/* Línea fija en el centro */}
-                <View style={styles.fixedScanLine} />
-              </View>
-
-              {loading && (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#28a745" />
-                  <Text style={styles.loadingText}>Buscando producto...</Text>
-                </View>
-              )}
-
-              {/* Botón de búsqueda por nombre */}
-              <TouchableOpacity
-                style={styles.searchButton}
-                onPress={() => setSearchModalVisible(true)}
-              >
-                <Ionicons name="search" size={20} color="white" />
-                <Text style={styles.searchButtonText}>Buscar por Nombre</Text>
-              </TouchableOpacity>
-
-              {/* Mostrar contador de productos en carrito */}
-              {cart.length > 0 && (
+            <View style={styles.errorActions}>
+              {reconnecting ? (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.primary}
+                  style={{ marginBottom: 20 }}
+                />
+              ) : (
                 <TouchableOpacity
-                  style={styles.viewCartButton}
-                  onPress={() => setScanning(false)}
+                  style={styles.reconnectButton}
+                  onPress={handleReconnect}
+                  disabled={reconnecting}
                 >
-                  <Ionicons name="cart" size={20} color="white" />
-                  <Text style={styles.viewCartButtonText}>
-                    Ver Carrito ({cart.length})
-                  </Text>
+                  <Text style={styles.reconnectButtonText}>Reconectar</Text>
                 </TouchableOpacity>
               )}
 
-              <Text style={styles.footerText}>
-                Posiciona el código de barras dentro del cuadro
-              </Text>
+              <TouchableOpacity
+                style={styles.offlineModeButton}
+                onPress={() => setConnectionError(false)}
+              >
+                <Text style={styles.offlineModeButtonText}>
+                  Usar modo sin conexión
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </View>
-      ) : (
-        // === VISTA DEL CARRITO ===
-        <View style={styles.cartScreenContainer}>
-          {/* Encabezado con título y botón QR a la derecha */}
-          <View style={styles.headerRow}>
-            <Text style={styles.cartTitle}>Carrito de Compra</Text>
-            <TouchableOpacity
-              onPress={() => setScanning(true)}
-              style={styles.qrIconButton}
-            >
-              <Ionicons name="qr-code-outline" size={24} color="#333" />
-            </TouchableOpacity>
-          </View>
-
-          <FlatList
-            data={cart}
-            keyExtractor={(item, index) => index.toString()}
-            renderItem={({ item, index }) => (
-              <View style={styles.cartItem}>
-                {/* Nombre del producto y precio */}
-                <View style={styles.itemHeader}>
-                  <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemPrice}>
-                    $ {formatMoney(item.price * item.quantity)}
-                  </Text>
-                </View>
-
-                {/* Información de stock y cantidad */}
-                <View style={styles.itemInfo}>
-                  <View style={styles.stockInfo}>
-                    <Ionicons name="cube-outline" size={18} color="#666" />
-                    <Text style={styles.stockText}>
-                      Stock disponible:{" "}
-                      <Text
-                        style={[
-                          styles.stockValue,
-                          item.stock - item.quantity <= 3 &&
-                            styles.lowStockValue,
-                        ]}
-                      >
-                        {item.stock - item.quantity}
-                      </Text>
-                      <Text style={styles.totalStockText}>
-                        {" "}
-                        (Total: {item.stock})
-                      </Text>
-                    </Text>
-                  </View>
-
-                  <View style={styles.quantityContainer}>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => {
-                        // Decrementar cantidad
-                        if (item.quantity > 1) {
-                          const updatedCart = [...cart];
-                          updatedCart[index].quantity -= 1;
-                          setCart(updatedCart);
-                        }
-                      }}
-                    >
-                      <Ionicons
-                        name="remove-circle"
-                        size={26}
-                        color="#28a745"
-                      />
-                    </TouchableOpacity>
-
-                    <View style={styles.quantityWrapper}>
-                      <Text style={styles.quantityText}>{item.quantity}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.quantityButton,
-                        item.stock - item.quantity <= 0 &&
-                          styles.disabledButton,
-                      ]}
-                      disabled={item.stock - item.quantity <= 0}
-                      onPress={() => {
-                        // Incrementar cantidad
-                        if (item.quantity < item.stock) {
-                          const updatedCart = [...cart];
-                          updatedCart[index].quantity += 1;
-                          setCart(updatedCart);
-                        }
-                      }}
-                    >
-                      <Ionicons
-                        name="add-circle"
-                        size={26}
-                        color={
-                          item.stock - item.quantity <= 0 ? "#aaa" : "#28a745"
-                        }
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Línea separadora */}
-                <View style={styles.itemDivider} />
-
-                {/* Fila de acciones */}
-                <View style={styles.actionsRow}>
-                  <Text style={styles.itemSubtotal}>
-                    Subtotal:{" "}
-                    <Text style={styles.subtotalValue}>
-                      $ {formatMoney(item.price * item.quantity)}
-                    </Text>
-                  </Text>
-
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => removeFromCart(index)}
+        ) : (
+          <>
+            {scanning ? (
+              // === VISTA DE ESCANEO ===
+              <View style={styles.scanContainer}>
+                <View style={styles.camera}>
+                  <CameraView
+                    style={StyleSheet.absoluteFillObject}
+                    onBarcodeScanned={
+                      scanning ? handleBarCodeScanned : undefined
+                    }
+                    barcodeScannerSettings={{
+                      barcodeTypes: [
+                        BARCODE_TYPES.qr,
+                        BARCODE_TYPES.ean13,
+                        BARCODE_TYPES.ean8,
+                        BARCODE_TYPES.code128,
+                        BARCODE_TYPES.code39,
+                        BARCODE_TYPES.code93,
+                        BARCODE_TYPES.codabar,
+                        BARCODE_TYPES.itf14,
+                        BARCODE_TYPES.upc_e,
+                      ],
+                      interval: 2000,
+                    }}
+                    cameraType="back"
+                    flashMode="auto"
                   >
-                    <Ionicons name="trash-outline" size={20} color="#fff" />
-                    <Text style={styles.removeButtonText}>Eliminar</Text>
+                    <View style={styles.overlay}>
+                      <Text style={styles.scanText}>
+                        Escanea el código de barras
+                      </Text>
+
+                      <View style={styles.scanArea}>
+                        {/* Esquinas estilizadas */}
+                        <View
+                          style={[styles.corner, styles.cornerTopLeft]}
+                        ></View>
+                        <View
+                          style={[styles.corner, styles.cornerTopRight]}
+                        ></View>
+                        <View
+                          style={[styles.corner, styles.cornerBottomLeft]}
+                        ></View>
+                        <View
+                          style={[styles.corner, styles.cornerBottomRight]}
+                        ></View>
+
+                        {/* Línea fija en el centro */}
+                        <View style={styles.fixedScanLine} />
+                      </View>
+
+                      {loading && (
+                        <View style={styles.loadingContainer}>
+                          <ActivityIndicator size="large" color="#28a745" />
+                          <Text style={styles.loadingText}>
+                            Buscando producto...
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Botón de búsqueda por nombre */}
+                      <TouchableOpacity
+                        style={styles.searchButton}
+                        onPress={() => setSearchModalVisible(true)}
+                      >
+                        <Ionicons name="search" size={20} color="white" />
+                        <Text style={styles.searchButtonText}>
+                          Buscar por Nombre
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Mostrar contador de productos en carrito */}
+                      {cart.length > 0 && (
+                        <TouchableOpacity
+                          style={styles.viewCartButton}
+                          onPress={() => setScanning(false)}
+                        >
+                          <Ionicons name="cart" size={20} color="white" />
+                          <Text style={styles.viewCartButtonText}>
+                            Ver Carrito ({cart.length})
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+
+                      <Text style={styles.footerText}>
+                        Posiciona el código de barras dentro del cuadro
+                      </Text>
+                    </View>
+                  </CameraView>
+                </View>
+              </View>
+            ) : (
+              // === VISTA DEL CARRITO ===
+              <View style={styles.cartScreenContainer}>
+                {/* Encabezado con título y botón QR a la derecha */}
+                <View style={styles.headerRow}>
+                  <Text style={styles.cartTitle}>Carrito de Compra</Text>
+                  <TouchableOpacity
+                    onPress={() => setScanning(true)}
+                    style={styles.qrIconButton}
+                  >
+                    <Ionicons name="qr-code-outline" size={24} color="#333" />
                   </TouchableOpacity>
                 </View>
-              </View>
-            )}
-            ListEmptyComponent={
-              <View style={styles.emptyCart}>
-                <Ionicons name="cart-outline" size={70} color="#ddd" />
-                <Text style={styles.emptyCartText}>
-                  No hay productos en el carrito
-                </Text>
-                <TouchableOpacity
-                  style={styles.scanMoreButton}
-                  onPress={() => setScanning(true)}
-                >
-                  <Text style={styles.scanMoreButtonText}>
-                    Escanear productos
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            }
-          />
 
-          {cart.length > 0 && (
-            <View style={styles.checkoutContainer}>
-              {/* Subtotal */}
-              <View style={styles.subtotalContainer}>
-                <View>
-                  <Text style={styles.subtotalLabel}>Subtotal</Text>
-                  <Text style={styles.itemCount}>{cart.length} productos</Text>
-                </View>
-                <Text style={styles.subtotalValue}>$ {formatMoney(total)}</Text>
-              </View>
+                <FlatList
+                  data={cart}
+                  keyExtractor={(item, index) => index.toString()}
+                  renderItem={({ item, index }) => (
+                    <View style={styles.cartItem}>
+                      {/* Nombre del producto y precio */}
+                      <View style={styles.itemHeader}>
+                        <Text style={styles.itemName}>{item.name}</Text>
+                        <Text style={styles.itemPrice}>
+                          $ {formatMoney(item.price * item.quantity)}
+                        </Text>
+                      </View>
 
-              {/* Botón para finalizar */}
-              <TouchableOpacity
-                style={styles.finishButton}
-                onPress={handleCheckout}
-              >
-                <Text style={styles.finishButtonText}>Finalizar Venta</Text>
-                <Ionicons name="arrow-forward" size={24} color="white" />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* MODAL DE BÚSQUEDA POR NOMBRE */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={searchModalVisible}
-        onRequestClose={() => setSearchModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.searchModalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Buscar Producto</Text>
-              <TouchableOpacity
-                onPress={() => setSearchModalVisible(false)}
-                style={styles.closeSearchButton}
-              >
-                <Ionicons name="close" size={16} color="#28a745" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.searchInputContainer}>
-              <Ionicons
-                name="search"
-                size={20}
-                color="#666"
-                style={{ marginRight: 10 }}
-              />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Nombre o código de barras"
-                value={searchQuery}
-                onChangeText={(text) => {
-                  setSearchQuery(text);
-                  if (text.length > 1) {
-                    searchProducts(text);
-                  } else if (text.length === 0) {
-                    setSearchResults([]);
-                  }
-                }}
-                autoFocus={true}
-              />
-              {searchQuery !== "" && (
-                <TouchableOpacity
-                  style={styles.clearButton}
-                  onPress={() => {
-                    setSearchQuery("");
-                    setSearchResults([]);
-                  }}
-                >
-                  <Ionicons name="close-circle" size={20} color="#666" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {searchLoading ? (
-              <ActivityIndicator
-                size="large"
-                color="#28a745"
-                style={{ marginTop: 20 }}
-              />
-            ) : (
-              <FlatList
-                data={searchResults}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => {
-                  // Verificar si el producto ya está en el carrito
-                  const existingItemIndex = cart.findIndex(
-                    (cartItem) => cartItem.id === item.id
-                  );
-                  const currentQuantity =
-                    existingItemIndex !== -1
-                      ? cart[existingItemIndex].quantity
-                      : 0;
-                  const canAdd = item.stock > currentQuantity;
-
-                  return (
-                    <TouchableOpacity
-                      style={[
-                        styles.searchResultItem,
-                        !canAdd && styles.disabledSearchItem,
-                      ]}
-                      disabled={!canAdd}
-                      onPress={() => {
-                        // Agregar directamente al carrito sin cerrar el modal
-                        if (existingItemIndex !== -1) {
-                          const updatedCart = [...cart];
-                          updatedCart[existingItemIndex].quantity += 1;
-                          setCart(updatedCart);
-                        } else {
-                          setCart([
-                            ...cart,
-                            {
-                              id: item.id,
-                              barcode: item.barcode,
-                              name: item.name,
-                              price: item.price,
-                              quantity: 1,
-                              stock: item.stock,
-                            },
-                          ]);
-                        }
-                      }}
-                    >
-                      <View style={styles.searchResultContent}>
-                        <View style={styles.searchResultInfo}>
-                          <Text style={styles.searchResultName}>
-                            {item.name}
-                          </Text>
-                          <Text style={styles.searchResultPrice}>
-                            Precio: $ {formatMoney(item.price)}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.searchResultStock,
-                              item.stock < 5 ? styles.lowStockText : null,
-                            ]}
-                          >
-                            Stock: {item.stock}
+                      {/* Información de stock y cantidad */}
+                      <View style={styles.itemInfo}>
+                        <View style={styles.stockInfo}>
+                          <Ionicons
+                            name="cube-outline"
+                            size={18}
+                            color="#666"
+                          />
+                          <Text style={styles.stockText}>
+                            Stock disponible:{" "}
+                            <Text
+                              style={[
+                                styles.stockValue,
+                                item.stock - item.quantity <= 3 &&
+                                  styles.lowStockValue,
+                              ]}
+                            >
+                              {item.stock - item.quantity}
+                            </Text>
+                            <Text style={styles.totalStockText}>
+                              {" "}
+                              (Total: {item.stock})
+                            </Text>
                           </Text>
                         </View>
 
-                        {canAdd && (
-                          <View style={styles.addButtonContainer}>
+                        <View style={styles.quantityContainer}>
+                          <TouchableOpacity
+                            style={styles.quantityButton}
+                            onPress={() => {
+                              // Decrementar cantidad
+                              if (item.quantity > 1) {
+                                const updatedCart = [...cart];
+                                updatedCart[index].quantity -= 1;
+                                setCart(updatedCart);
+                              }
+                            }}
+                          >
                             <Ionicons
-                              name="add-circle"
-                              size={28}
+                              name="remove-circle"
+                              size={26}
                               color="#28a745"
                             />
-                          </View>
-                        )}
+                          </TouchableOpacity>
 
-                        {!canAdd && (
-                          <Text style={styles.outOfStockText}>Sin stock</Text>
-                        )}
+                          <View style={styles.quantityWrapper}>
+                            <Text style={styles.quantityText}>
+                              {item.quantity}
+                            </Text>
+                          </View>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.quantityButton,
+                              item.stock - item.quantity <= 0 &&
+                                styles.disabledButton,
+                            ]}
+                            disabled={item.stock - item.quantity <= 0}
+                            onPress={() => {
+                              // Incrementar cantidad
+                              if (item.quantity < item.stock) {
+                                const updatedCart = [...cart];
+                                updatedCart[index].quantity += 1;
+                                setCart(updatedCart);
+                              }
+                            }}
+                          >
+                            <Ionicons
+                              name="add-circle"
+                              size={26}
+                              color={
+                                item.stock - item.quantity <= 0
+                                  ? "#aaa"
+                                  : "#28a745"
+                              }
+                            />
+                          </TouchableOpacity>
+                        </View>
                       </View>
+
+                      {/* Línea separadora */}
+                      <View style={styles.itemDivider} />
+
+                      {/* Fila de acciones */}
+                      <View style={styles.actionsRow}>
+                        <Text style={styles.itemSubtotal}>
+                          Subtotal:{" "}
+                          <Text style={styles.subtotalValue}>
+                            $ {formatMoney(item.price * item.quantity)}
+                          </Text>
+                        </Text>
+
+                        <TouchableOpacity
+                          style={styles.removeButton}
+                          onPress={() => removeFromCart(index)}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={20}
+                            color="#fff"
+                          />
+                          <Text style={styles.removeButtonText}>Eliminar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                  ListEmptyComponent={
+                    <View style={styles.emptyCart}>
+                      <Ionicons name="cart-outline" size={70} color="#ddd" />
+                      <Text style={styles.emptyCartText}>
+                        No hay productos en el carrito
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.scanMoreButton}
+                        onPress={() => setScanning(true)}
+                      >
+                        <Text style={styles.scanMoreButtonText}>
+                          Escanear productos
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  }
+                />
+
+                {cart.length > 0 && (
+                  <View style={styles.checkoutContainer}>
+                    {/* Subtotal */}
+                    <View style={styles.subtotalContainer}>
+                      <View>
+                        <Text style={styles.subtotalLabel}>Subtotal</Text>
+                        <Text style={styles.itemCount}>
+                          {cart.length} productos
+                        </Text>
+                      </View>
+                      <Text style={styles.subtotalValue}>
+                        $ {formatMoney(total)}
+                      </Text>
+                    </View>
+
+                    {/* Botón para finalizar */}
+                    <TouchableOpacity
+                      style={styles.finishButton}
+                      onPress={handleCheckout}
+                    >
+                      <Text style={styles.finishButtonText}>
+                        Finalizar Venta
+                      </Text>
+                      <Ionicons name="arrow-forward" size={24} color="white" />
                     </TouchableOpacity>
-                  );
-                }}
-                ListEmptyComponent={
-                  searchQuery.length > 2 ? (
-                    <Text style={styles.noResultsText}>
-                      No se encontraron productos
-                    </Text>
-                  ) : searchQuery.length > 0 ? (
-                    <Text style={styles.noResultsText}>
-                      Escribe al menos 2 caracteres
-                    </Text>
-                  ) : null
-                }
-                style={{ maxHeight: 300 }}
-              />
+                  </View>
+                )}
+              </View>
             )}
 
-            <View style={styles.modalButtonsContainer}>
-              <TouchableOpacity
-                style={styles.closeModalButton}
-                onPress={() => {
-                  setSearchModalVisible(false);
-                  setSearchQuery("");
-                  setSearchResults([]);
-                }}
-              >
-                <Text style={styles.closeModalButtonText}>Cerrar</Text>
-              </TouchableOpacity>
+            {/* MODAL DE BÚSQUEDA POR NOMBRE */}
+            <Modal
+              animationType="slide"
+              transparent={true}
+              visible={searchModalVisible}
+              onRequestClose={() => setSearchModalVisible(false)}
+            >
+              <View style={styles.modalContainer}>
+                <View style={styles.searchModalContent}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Buscar Producto</Text>
+                    <TouchableOpacity
+                      onPress={() => setSearchModalVisible(false)}
+                      style={styles.closeSearchButton}
+                    >
+                      <Ionicons name="close" size={16} color="#28a745" />
+                    </TouchableOpacity>
+                  </View>
 
-              {cart.length > 0 && (
-                <TouchableOpacity
-                  style={styles.viewCartModalButton}
-                  onPress={() => {
-                    setSearchModalVisible(false);
-                    setSearchQuery("");
-                    setSearchResults([]);
-                    setScanning(false); // Mostrar vista de carrito
-                  }}
-                >
-                  <Text style={styles.viewCartModalButtonText}>
-                    Ver Carrito ({cart.length})
+                  <View style={styles.searchInputContainer}>
+                    <Ionicons
+                      name="search"
+                      size={20}
+                      color="#666"
+                      style={{ marginRight: 10 }}
+                    />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Nombre o código de barras"
+                      value={searchQuery}
+                      onChangeText={(text) => {
+                        setSearchQuery(text);
+                        if (text.length > 1) {
+                          searchProducts(text);
+                        } else if (text.length === 0) {
+                          setSearchResults([]);
+                        }
+                      }}
+                      autoFocus={true}
+                    />
+                    {searchQuery !== "" && (
+                      <TouchableOpacity
+                        style={styles.clearButton}
+                        onPress={() => {
+                          setSearchQuery("");
+                          setSearchResults([]);
+                        }}
+                      >
+                        <Ionicons name="close-circle" size={20} color="#666" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {searchLoading ? (
+                    <ActivityIndicator
+                      size="large"
+                      color="#28a745"
+                      style={{ marginTop: 20 }}
+                    />
+                  ) : (
+                    <FlatList
+                      data={searchResults}
+                      keyExtractor={(item) => item.id}
+                      renderItem={({ item }) => {
+                        // Verificar si el producto ya está en el carrito
+                        const existingItemIndex = cart.findIndex(
+                          (cartItem) => cartItem.id === item.id
+                        );
+                        const currentQuantity =
+                          existingItemIndex !== -1
+                            ? cart[existingItemIndex].quantity
+                            : 0;
+                        const canAdd = item.stock > currentQuantity;
+
+                        return (
+                          <TouchableOpacity
+                            style={[
+                              styles.searchResultItem,
+                              !canAdd && styles.disabledSearchItem,
+                            ]}
+                            disabled={!canAdd}
+                            onPress={() => {
+                              // Agregar directamente al carrito sin cerrar el modal
+                              if (existingItemIndex !== -1) {
+                                const updatedCart = [...cart];
+                                updatedCart[existingItemIndex].quantity += 1;
+                                setCart(updatedCart);
+                              } else {
+                                setCart([
+                                  ...cart,
+                                  {
+                                    id: item.id,
+                                    barcode: item.barcode,
+                                    name: item.name,
+                                    price: item.price,
+                                    quantity: 1,
+                                    stock: item.stock,
+                                  },
+                                ]);
+                              }
+                            }}
+                          >
+                            <View style={styles.searchResultContent}>
+                              <View style={styles.searchResultInfo}>
+                                <Text style={styles.searchResultName}>
+                                  {item.name}
+                                </Text>
+                                <Text style={styles.searchResultPrice}>
+                                  Precio: $ {formatMoney(item.price)}
+                                </Text>
+                                <Text
+                                  style={[
+                                    styles.searchResultStock,
+                                    item.stock < 5 ? styles.lowStockText : null,
+                                  ]}
+                                >
+                                  Stock: {item.stock}
+                                </Text>
+                              </View>
+
+                              {canAdd && (
+                                <View style={styles.addButtonContainer}>
+                                  <Ionicons
+                                    name="add-circle"
+                                    size={28}
+                                    color="#28a745"
+                                  />
+                                </View>
+                              )}
+
+                              {!canAdd && (
+                                <Text style={styles.outOfStockText}>
+                                  Sin stock
+                                </Text>
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      }}
+                      ListEmptyComponent={
+                        searchQuery.length > 2 ? (
+                          <Text style={styles.noResultsText}>
+                            No se encontraron productos
+                          </Text>
+                        ) : searchQuery.length > 0 ? (
+                          <Text style={styles.noResultsText}>
+                            Escribe al menos 2 caracteres
+                          </Text>
+                        ) : null
+                      }
+                      style={{ maxHeight: 300 }}
+                    />
+                  )}
+
+                  <View style={styles.modalButtonsContainer}>
+                    <TouchableOpacity
+                      style={styles.closeModalButton}
+                      onPress={() => {
+                        setSearchModalVisible(false);
+                        setSearchQuery("");
+                        setSearchResults([]);
+                      }}
+                    >
+                      <Text style={styles.closeModalButtonText}>Cerrar</Text>
+                    </TouchableOpacity>
+
+                    {cart.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.viewCartModalButton}
+                        onPress={() => {
+                          setSearchModalVisible(false);
+                          setSearchQuery("");
+                          setSearchResults([]);
+                          setScanning(false); // Mostrar vista de carrito
+                        }}
+                      >
+                        <Text style={styles.viewCartModalButtonText}>
+                          Ver Carrito ({cart.length})
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </View>
+            </Modal>
+
+            {/* Modal de procesamiento */}
+            <Modal
+              visible={processingOrder}
+              transparent={true}
+              animationType="fade"
+            >
+              <View style={styles.processingModalContainer}>
+                <View style={styles.processingModalContent}>
+                  <ActivityIndicator size="large" color="#fff" />
+                  <Text style={styles.processingModalText}>
+                    Procesando venta...
                   </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal de procesamiento */}
-      <Modal visible={processingOrder} transparent={true} animationType="fade">
-        <View style={styles.processingModalContainer}>
-          <View style={styles.processingModalContent}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.processingModalText}>Procesando venta...</Text>
-          </View>
-        </View>
-      </Modal>
-    </View>
+                </View>
+              </View>
+            </Modal>
+          </>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -1714,5 +1864,57 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
     color: "#333",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#fff",
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    marginVertical: 20,
+    color: "#d32f2f",
+  },
+  errorText: {
+    textAlign: "center",
+    fontSize: 14,
+    color: "#757575",
+    marginBottom: 30,
+  },
+  errorActions: {
+    flexDirection: "column",
+    alignItems: "center",
+    width: "100%",
+    marginTop: 10,
+  },
+  reconnectButton: {
+    backgroundColor: "#2196f3",
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    marginBottom: 15,
+    width: "80%",
+    alignItems: "center",
+  },
+  reconnectButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  offlineModeButton: {
+    backgroundColor: "#757575",
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    width: "80%",
+    alignItems: "center",
+  },
+  offlineModeButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
