@@ -1,54 +1,41 @@
 import React, { useState } from 'react';
 import { 
   StyleSheet, 
-  Text, 
   View, 
+  Text, 
   TextInput, 
   TouchableOpacity, 
   Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
-  Modal
+  ActivityIndicator,
+  StatusBar
 } from 'react-native';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { colors } from '../theme/colors';
+// Usando componentes nativos en lugar de Picker externo
 import { categories } from '../constants/categories';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function EditProductScreen({ route, navigation }) {
   const { product } = route.params;
+  
   const [name, setName] = useState(product.name);
   const [price, setPrice] = useState(product.price.toString());
   const [stock, setStock] = useState(product.stock.toString());
-  const [category, setCategory] = useState(product.category || '');
+  const [category, setCategory] = useState(product.category || 'other');
   const [loading, setLoading] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
-
-  const validateForm = () => {
-    if (!name || !price || !stock || !category) {
-      Alert.alert('Error', 'Todos los campos son obligatorios');
-      return false;
-    }
-    if (isNaN(price) || parseFloat(price) <= 0) {
-      Alert.alert('Error', 'El precio debe ser un número válido mayor a 0');
-      return false;
-    }
-    if (isNaN(stock) || parseInt(stock) < 0) {
-      Alert.alert('Error', 'El stock debe ser un número válido mayor o igual a 0');
-      return false;
-    }
-    return true;
-  };
 
   const handleUpdateProduct = async () => {
-    if (!validateForm()) return;
-    
+    if (!name || !price || !stock) {
+      Alert.alert('Error', 'Por favor complete todos los campos');
+      return;
+    }
+
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'products', product.id), {
+      const productRef = doc(db, 'products', product.id);
+      await updateDoc(productRef, {
         name,
         price: parseFloat(price),
         stock: parseInt(stock),
@@ -56,11 +43,8 @@ export default function EditProductScreen({ route, navigation }) {
         updatedAt: new Date()
       });
       
-      Alert.alert(
-        'Éxito', 
-        'Producto actualizado correctamente',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      Alert.alert('Éxito', 'Producto actualizado correctamente');
+      navigation.goBack();
     } catch (error) {
       console.error('Error al actualizar producto:', error);
       Alert.alert('Error', 'No se pudo actualizar el producto');
@@ -69,23 +53,25 @@ export default function EditProductScreen({ route, navigation }) {
     }
   };
 
-  const handleDeleteProduct = () => {
+  const handleDeleteProduct = async () => {
     Alert.alert(
       'Confirmar eliminación',
-      '¿Estás seguro de que deseas eliminar este producto?',
+      '¿Está seguro de que desea eliminar este producto?',
       [
         { text: 'Cancelar', style: 'cancel' },
         { 
-          text: 'Eliminar',
+          text: 'Eliminar', 
           style: 'destructive',
           onPress: async () => {
             setLoading(true);
             try {
               await deleteDoc(doc(db, 'products', product.id));
+              Alert.alert('Éxito', 'Producto eliminado correctamente');
               navigation.goBack();
             } catch (error) {
               console.error('Error al eliminar producto:', error);
               Alert.alert('Error', 'No se pudo eliminar el producto');
+            } finally {
               setLoading(false);
             }
           }
@@ -94,129 +80,146 @@ export default function EditProductScreen({ route, navigation }) {
     );
   };
 
-  const CategoryModal = () => (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={showCategoryModal}
-      onRequestClose={() => setShowCategoryModal(false)}
-    >
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Seleccionar Categoría</Text>
-          <ScrollView>
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.categoryItem,
-                  category === cat.id && styles.categoryItemSelected
-                ]}
-                onPress={() => {
-                  setCategory(cat.id);
-                  setShowCategoryModal(false);
-                }}
-              >
-                <Ionicons 
-                  name={cat.icon} 
-                  size={24} 
-                  color={category === cat.id ? colors.primary : colors.text.secondary} 
-                />
-                <Text style={[
-                  styles.categoryItemText,
-                  category === cat.id && styles.categoryItemTextSelected
-                ]}>
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <TouchableOpacity
-            style={styles.modalCloseButton}
-            onPress={() => setShowCategoryModal(false)}
-          >
-            <Text style={styles.modalCloseButtonText}>Cerrar</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
+  const getCategoryIcon = (categoryId) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category ? category.icon : 'help-circle-outline';
+  };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Text style={styles.title}>Editar Producto</Text>
-        
-        <Text style={styles.label}>Código de barras</Text>
-        <Text style={styles.barcode}>{product.barcode}</Text>
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Nombre del producto"
-          value={name}
-          onChangeText={setName}
-        />
-
-        <TouchableOpacity
-          style={styles.categorySelector}
-          onPress={() => setShowCategoryModal(true)}
+    <View style={styles.container}>
+      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
         >
-          <Text style={[
-            styles.categoryText,
-            !category && styles.categoryPlaceholder
-          ]}>
-            {category ? 
-              categories.find(cat => cat.id === category)?.name : 
-              'Seleccionar categoría'
-            }
-          </Text>
-          <Ionicons name="chevron-down" size={24} color={colors.text.secondary} />
+          <Ionicons name="arrow-back" size={24} color={colors.text.onPrimary} />
         </TouchableOpacity>
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Precio"
-          value={price}
-          onChangeText={setPrice}
-          keyboardType="decimal-pad"
-        />
-        
-        <TextInput
-          style={styles.input}
-          placeholder="Stock"
-          value={stock}
-          onChangeText={setStock}
-          keyboardType="numeric"
-        />
-        
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity 
-            style={[styles.updateButton, loading && styles.disabledButton]} 
-            onPress={handleUpdateProduct}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Actualizar</Text>
-            )}
-          </TouchableOpacity>
+        <Text style={styles.headerTitle}>Editar Producto</Text>
+        <View style={styles.headerRight} />
+      </View>
+      
+      <ScrollView style={styles.scrollContainer}>
+        <View style={styles.formContainer}>
+          {/* Product Icon and Barcode */}
+          <View style={styles.productHeader}>
+            <View style={styles.iconContainer}>
+              <MaterialCommunityIcons 
+                name="package-variant-closed" 
+                size={40} 
+                color={colors.primary} 
+              />
+            </View>
+            <View style={styles.barcodeContainer}>
+              <Text style={styles.barcodeLabel}>Código de barras</Text>
+              <Text style={styles.barcodeText}>{product.barcode}</Text>
+            </View>
+          </View>
 
-          <TouchableOpacity 
-            style={[styles.deleteButton, loading && styles.disabledButton]} 
-            onPress={handleDeleteProduct}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>Eliminar</Text>
-          </TouchableOpacity>
+          {/* Form Fields */}
+          <View style={styles.card}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Nombre del producto</Text>
+              <TextInput
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+                placeholder="Nombre del producto"
+                placeholderTextColor={colors.text.light}
+              />
+            </View>
+
+            <View style={styles.inputRow}>
+              <View style={[styles.inputContainer, styles.halfInput]}>
+                <Text style={styles.label}>Precio</Text>
+                <View style={styles.priceInputContainer}>
+                  <Text style={styles.currencySymbol}>$</Text>
+                  <TextInput
+                    style={styles.priceInput}
+                    value={price}
+                    onChangeText={setPrice}
+                    placeholder="0.00"
+                    keyboardType="decimal-pad"
+                    placeholderTextColor={colors.text.light}
+                  />
+                </View>
+              </View>
+
+              <View style={[styles.inputContainer, styles.halfInput]}>
+                <Text style={styles.label}>Stock</Text>
+                <TextInput
+                  style={styles.input}
+                  value={stock}
+                  onChangeText={setStock}
+                  placeholder="Cantidad"
+                  keyboardType="number-pad"
+                  placeholderTextColor={colors.text.light}
+                />
+              </View>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Categoría</Text>
+              <View style={styles.categorySelector}>
+                {categories.map(cat => (
+                  <TouchableOpacity 
+                    key={cat.id}
+                    style={[
+                      styles.categoryButton,
+                      category === cat.id && styles.categoryButtonActive
+                    ]}
+                    onPress={() => setCategory(cat.id)}
+                  >
+                    <Ionicons 
+                      name={cat.icon} 
+                      size={18} 
+                      color={category === cat.id ? colors.text.onPrimary : colors.text.secondary} 
+                    />
+                    <Text 
+                      style={[
+                        styles.categoryButtonText,
+                        category === cat.id && styles.categoryButtonTextActive
+                      ]}
+                    >
+                      {cat.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity 
+              style={styles.updateButton} 
+              onPress={handleUpdateProduct}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color={colors.text.onPrimary} />
+              ) : (
+                <>
+                  <Ionicons name="save-outline" size={20} color={colors.text.onPrimary} />
+                  <Text style={styles.buttonText}>Guardar Cambios</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.deleteButton} 
+              onPress={handleDeleteProduct}
+              disabled={loading}
+            >
+              <Ionicons name="trash-outline" size={20} color={colors.text.onPrimary} />
+              <Text style={styles.buttonText}>Eliminar Producto</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
-
-      <CategoryModal />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -225,140 +228,191 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primary,
+    paddingTop: 40,
+    paddingBottom: 15,
+    paddingHorizontal: 15,
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    elevation: 4,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text.onPrimary,
+  },
+  headerRight: {
+    width: 40,
+  },
   scrollContainer: {
+    flex: 1,
+  },
+  formContainer: {
     padding: 20,
   },
-  title: {
-    fontSize: 24,
+  productHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  iconContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
+    elevation: 2,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  barcodeContainer: {
+    flex: 1,
+  },
+  barcodeLabel: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginBottom: 4,
+  },
+  barcodeText: {
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 30,
-    textAlign: 'center',
     color: colors.text.primary,
+  },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  inputContainer: {
+    marginBottom: 15,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  halfInput: {
+    width: '48%',
   },
   label: {
     fontSize: 14,
     color: colors.text.secondary,
-    marginBottom: 5,
-  },
-  barcode: {
-    fontSize: 16,
-    color: colors.text.primary,
-    marginBottom: 20,
-    padding: 15,
-    backgroundColor: colors.surface,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 8,
   },
   input: {
-    width: '100%',
-    height: 50,
-    backgroundColor: colors.background,
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 15,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
     borderWidth: 1,
     borderColor: colors.border,
+    color: colors.text.primary,
+  },
+  priceInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+  },
+  currencySymbol: {
+    fontSize: 16,
+    color: colors.text.secondary,
+    marginRight: 4,
+  },
+  priceInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
     color: colors.text.primary,
   },
   categorySelector: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  categoryButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.background,
-    borderRadius: 5,
-    marginBottom: 15,
-    paddingHorizontal: 15,
-    height: 50,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 8,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  categoryText: {
-    fontSize: 16,
-    color: colors.text.primary,
+  categoryButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  categoryPlaceholder: {
+  categoryButtonText: {
+    fontSize: 14,
     color: colors.text.secondary,
+    marginLeft: 6,
+  },
+  categoryButtonTextActive: {
+    color: colors.text.onPrimary,
   },
   buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
+    marginTop: 10,
   },
   updateButton: {
-    flex: 1,
-    height: 50,
     backgroundColor: colors.primary,
-    borderRadius: 5,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    elevation: 2,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
   },
   deleteButton: {
-    flex: 1,
-    height: 50,
     backgroundColor: colors.error,
-    borderRadius: 5,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 10,
-  },
-  disabledButton: {
-    opacity: 0.6,
+    padding: 15,
+    borderRadius: 10,
+    elevation: 2,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
   },
   buttonText: {
-    color: colors.background,
+    color: colors.text.onPrimary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  categoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  categoryItemSelected: {
-    backgroundColor: colors.surface,
-  },
-  categoryItemText: {
-    fontSize: 16,
-    color: colors.text.primary,
-    marginLeft: 15,
-  },
-  categoryItemTextSelected: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  modalCloseButton: {
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalCloseButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-}); 
+});

@@ -1,14 +1,20 @@
 export const colors = {
-  primary: '#00A651', // Verde principal
-  secondary: '#333333', // Negro suave para textos
+  primary: '#2E7D32', // Verde oscuro profesional
+  secondary: '#4CAF50', // Verde medio
+  accent: '#81C784', // Verde claro
   background: '#FFFFFF',
-  surface: '#F8F8F8',
-  border: '#E5E5E5',
+  surface: '#F5F9F6', // Fondo con tinte verde muy suave
+  card: '#E8F5E9', // Fondo de tarjetas con tinte verde claro
+  border: '#C8E6C9', // Bordes con tinte verde
   text: {
-    primary: '#333333',
-    secondary: '#666666',
-    light: '#999999'
+    primary: '#212121', // Casi negro para texto principal
+    secondary: '#424242', // Gris oscuro para texto secundario
+    light: '#757575', // Gris medio para texto terciario
+    onPrimary: '#FFFFFF' // Texto blanco sobre fondos de color
   },
-  error: '#DC3545',
-  success: '#28A745'
-}; 
+  error: '#D32F2F',
+  success: '#388E3C',
+  warning: '#FFA000',
+  info: '#1976D2',
+  shadow: 'rgba(0, 0, 0, 0.1)' // Sombras sutiles
+};

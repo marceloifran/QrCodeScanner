@@ -1,7 +1,8 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // Configuración de Firebase
 const firebaseConfig = {
@@ -17,10 +18,12 @@ const firebaseConfig = {
 let app;
 try {
   // Prevenir múltiples inicializaciones
-  if (!global.firebaseApp) {
+  if (typeof global !== 'undefined' && !global.firebaseApp) {
     global.firebaseApp = initializeApp(firebaseConfig);
+    app = global.firebaseApp;
+  } else {
+    app = initializeApp(firebaseConfig);
   }
-  app = global.firebaseApp;
 } catch (error) {
   app = initializeApp(firebaseConfig);
   console.error("Error inicializando Firebase:", error);
@@ -29,13 +32,20 @@ try {
 // Inicializar Auth y Firestore
 let auth;
 try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
-  });
+  // Usar diferentes métodos de autenticación según la plataforma
+  if (Platform.OS === 'web') {
+    auth = getAuth(app);
+  } else {
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage)
+    });
+  }
 } catch (error) {
+  // Fallback a getAuth si hay error
+  auth = getAuth(app);
   console.error("Error inicializando Auth:", error);
 }
 
 const db = getFirestore(app);
 
-export { auth, app, db }; 
+export { auth, app, db };

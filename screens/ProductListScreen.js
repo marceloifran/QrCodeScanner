@@ -7,19 +7,26 @@ import {
   TouchableOpacity, 
   TextInput,
   ActivityIndicator,
-  ScrollView
+  ScrollView,
+  StatusBar,
+  Image
 } from 'react-native';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
 import { categories } from '../constants/categories';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function ProductListScreen({ navigation }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    totalValue: 0,
+    lowStock: 0
+  });
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -31,11 +38,33 @@ export default function ProductListScreen({ navigation }) {
   const loadProducts = async () => {
     setLoading(true);
     try {
-      const querySnapshot = await getDocs(collection(db, 'products'));
+      const productsQuery = query(
+        collection(db, 'products'),
+        where('userId', '==', auth.currentUser.uid)
+      );
+      const querySnapshot = await getDocs(productsQuery);
       const productsList = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
+      
+      // Calcular estadísticas
+      let totalValue = 0;
+      let lowStockCount = 0;
+      
+      productsList.forEach(product => {
+        totalValue += product.price * product.stock;
+        if (product.stock < 10) {
+          lowStockCount++;
+        }
+      });
+      
+      setStats({
+        totalProducts: productsList.length,
+        totalValue: totalValue,
+        lowStock: lowStockCount
+      });
+      
       setProducts(productsList);
     } catch (error) {
       console.error('Error al cargar productos:', error);
@@ -70,7 +99,7 @@ export default function ProductListScreen({ navigation }) {
       <Ionicons 
         name={category.icon} 
         size={16}
-        color={selectedCategory === category.id ? colors.background : colors.text.secondary}
+        color={selectedCategory === category.id ? colors.text.onPrimary : colors.text.secondary}
       />
       <Text style={[
         styles.categoryButtonText,
@@ -81,9 +110,27 @@ export default function ProductListScreen({ navigation }) {
     </TouchableOpacity>
   );
 
+  const StatCard = ({ icon, title, value, color }) => (
+    <View style={[styles.statCard, { borderLeftColor: color }]}>
+      <View style={styles.statIconContainer}>
+        <Ionicons name={icon} size={24} color={color} />
+      </View>
+      <View style={styles.statContent}>
+        <Text style={styles.statTitle}>{title}</Text>
+        <Text style={[styles.statValue, { color }]}>{value}</Text>
+      </View>
+    </View>
+  );
+
+  const filteredProducts = filterProducts();
+
   return (
     <View style={styles.container}>
+      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+      
+      {/* Header */}
       <View style={styles.header}>
+        <Text style={styles.headerTitle}>Inventario</Text>
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={20} color={colors.text.secondary} />
           <TextInput
@@ -92,9 +139,42 @@ export default function ProductListScreen({ navigation }) {
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color={colors.text.secondary} />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
+      {/* Stats Cards */}
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.statsContainer}
+        contentContainerStyle={styles.statsContent}
+      >
+        <StatCard 
+          icon="cube-outline" 
+          title="Total Productos" 
+          value={stats.totalProducts} 
+          color={colors.primary} 
+        />
+        <StatCard 
+          icon="cash-outline" 
+          title="Valor Inventario" 
+          value={`$${stats.totalValue.toFixed(2)}`} 
+          color={colors.secondary} 
+        />
+        <StatCard 
+          icon="alert-circle-outline" 
+          title="Stock Bajo" 
+          value={stats.lowStock} 
+          color={colors.warning} 
+        />
+      </ScrollView>
+
+      {/* Categories */}
       <View style={styles.categoriesWrapper}>
         <ScrollView 
           horizontal 
@@ -108,46 +188,77 @@ export default function ProductListScreen({ navigation }) {
         </ScrollView>
       </View>
 
+      {/* Products List */}
       {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
       ) : (
-        <FlatList
-          data={filterProducts()}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.productCard}
-              onPress={() => navigation.navigate('EditProduct', { product: item })}
-            >
-              <View style={styles.productInfo}>
-                <Text style={styles.productName}>{item.name}</Text>
-                <Text style={styles.productBarcode}>
-                  Código: {item.barcode}
-                </Text>
-                <Text style={styles.productCategory}>
-                  {categories.find(cat => cat.id === item.category)?.name || 'Sin categoría'}
-                </Text>
-                <Text style={styles.productPrice}>
-                  ${item.price.toFixed(2)}
-                </Text>
-                <Text style={[
-                  styles.productStock,
-                  item.stock < 10 && styles.lowStock
-                ]}>
-                  Stock: {item.stock} unidades
-                </Text>
-              </View>
-            </TouchableOpacity>
+        <>
+          {filteredProducts.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="package-variant" size={60} color={colors.text.light} />
+              <Text style={styles.emptyText}>No se encontraron productos</Text>
+              <TouchableOpacity 
+                style={styles.emptyButton}
+                onPress={() => navigation.navigate('AddProduct')}
+              >
+                <Text style={styles.emptyButtonText}>Agregar Producto</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredProducts}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.productCard}
+                  onPress={() => navigation.navigate('EditProduct', { product: item })}
+                >
+                  <View style={styles.productIconContainer}>
+                    <MaterialCommunityIcons 
+                      name={item.stock < 10 ? "package-variant-closed-alert" : "package-variant-closed"} 
+                      size={30} 
+                      color={item.stock < 10 ? colors.warning : colors.primary} 
+                    />
+                  </View>
+                  <View style={styles.productInfo}>
+                    <Text style={styles.productName}>{item.name}</Text>
+                    <View style={styles.productDetails}>
+                      <View style={styles.productDetail}>
+                        <Ionicons name="barcode-outline" size={14} color={colors.text.secondary} />
+                        <Text style={styles.productDetailText}>{item.barcode}</Text>
+                      </View>
+                      <View style={styles.productDetail}>
+                        <Ionicons name="pricetag-outline" size={14} color={colors.text.secondary} />
+                        <Text style={styles.productDetailText}>
+                          {categories.find(cat => cat.id === item.category)?.name || 'Sin categoría'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.productMetrics}>
+                    <Text style={styles.productPrice}>${item.price.toFixed(2)}</Text>
+                    <View style={[
+                      styles.stockBadge,
+                      item.stock < 10 ? styles.lowStockBadge : styles.goodStockBadge
+                    ]}>
+                      <Text style={styles.stockText}>{item.stock}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.listContainer}
+            />
           )}
-          contentContainerStyle={styles.listContainer}
-        />
+        </>
       )}
 
       <TouchableOpacity
         style={styles.addButton}
         onPress={() => navigation.navigate('AddProduct')}
       >
-        <Ionicons name="add" size={30} color="white" />
+        <Ionicons name="add" size={30} color={colors.text.onPrimary} />
       </TouchableOpacity>
     </View>
   );
@@ -160,9 +271,21 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 15,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingTop: 40,
+    backgroundColor: colors.primary,
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
+    elevation: 4,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colors.text.onPrimary,
+    marginBottom: 15,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -170,8 +293,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: 10,
     padding: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    marginBottom: 5,
   },
   searchInput: {
     flex: 1,
@@ -179,16 +301,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text.primary,
   },
+  statsContainer: {
+    maxHeight: 100,
+    marginTop: 15,
+  },
+  statsContent: {
+    paddingHorizontal: 15,
+  },
+  statCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    padding: 12,
+    marginRight: 10,
+    width: 180,
+    borderLeftWidth: 4,
+    elevation: 2,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  statIconContainer: {
+    marginRight: 12,
+  },
+  statContent: {
+    flex: 1,
+  },
+  statTitle: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
   categoriesWrapper: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
+    marginTop: 15,
+    marginBottom: 5,
   },
   categoriesContainer: {
     maxHeight: 44,
   },
   categoriesContent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
     paddingVertical: 6,
   },
   categoryButton: {
@@ -196,12 +354,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: 16,
-    backgroundColor: colors.background,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
     marginRight: 8,
     borderWidth: 1,
     borderColor: colors.border,
-    height: 32,
+    height: 36,
   },
   categoryButtonActive: {
     backgroundColor: colors.primary,
@@ -213,50 +371,109 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   categoryButtonTextActive: {
-    color: colors.background,
+    color: colors.text.onPrimary,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: colors.text.secondary,
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  emptyButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  emptyButtonText: {
+    color: colors.text.onPrimary,
+    fontWeight: '600',
   },
   listContainer: {
-    padding: 10,
+    padding: 15,
+    paddingBottom: 80,
   },
   productCard: {
-    backgroundColor: colors.background,
-    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
     padding: 15,
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.border,
+    elevation: 2,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.5,
+  },
+  productIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
   },
   productInfo: {
     flex: 1,
   },
   productName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: colors.text.primary,
     marginBottom: 5,
   },
-  productBarcode: {
-    color: colors.text.secondary,
-    fontSize: 14,
-    marginBottom: 5,
+  productDetails: {
+    flexDirection: 'column',
   },
-  productCategory: {
-    color: colors.primary,
-    fontSize: 14,
-    marginBottom: 5,
+  productDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+  },
+  productDetailText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginLeft: 5,
+  },
+  productMetrics: {
+    alignItems: 'flex-end',
   },
   productPrice: {
     fontSize: 16,
-    color: colors.text.primary,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: colors.primary,
     marginBottom: 5,
   },
-  productStock: {
-    fontSize: 14,
-    color: colors.text.secondary,
+  stockBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    minWidth: 30,
+    alignItems: 'center',
   },
-  lowStock: {
-    color: colors.error,
+  goodStockBadge: {
+    backgroundColor: colors.success + '30',
+  },
+  lowStockBadge: {
+    backgroundColor: colors.warning + '30',
+  },
+  stockText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: colors.text.primary,
   },
   addButton: {
     position: 'absolute',
@@ -269,9 +486,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
-}); 
+});

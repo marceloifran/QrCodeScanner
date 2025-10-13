@@ -6,12 +6,13 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  ActivityIndicator 
+  ActivityIndicator,
+  StatusBar
 } from 'react-native';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { colors } from '../theme/colors';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function SalesHistoryScreen() {
   const [sales, setSales] = useState([]);
@@ -277,4 +278,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 5,
   },
-}); 
+});

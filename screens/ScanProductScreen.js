@@ -8,11 +8,14 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
-  Modal
+  Modal,
+  StatusBar
 } from 'react-native';
 import { Camera, CameraView } from 'expo-camera';
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, increment, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { colors } from '../theme/colors';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function ScanProductScreen({ navigation }) {
   const [hasPermission, setHasPermission] = useState(null);
