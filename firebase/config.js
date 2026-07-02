@@ -1,5 +1,6 @@
+import { Platform } from 'react-native';
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getStorage } from "firebase/storage";
@@ -30,11 +31,20 @@ try {
 // Inicializar Auth y Firestore
 let auth;
 try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
-  });
+  if (Platform.OS === 'web') {
+    auth = getAuth(app);
+  } else {
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage)
+    });
+  }
 } catch (error) {
   console.error("Error inicializando Auth:", error);
+  try {
+    auth = getAuth(app);
+  } catch (fallbackError) {
+    console.error("Error en fallback de Auth:", fallbackError);
+  }
 }
 
 // Configuración optimizada de Firestore
@@ -65,4 +75,4 @@ export const getCurrentUser = () => {
 
 export const storage = getStorage(app);
 
-export { auth, app, db }; 
+export { auth, app, db };

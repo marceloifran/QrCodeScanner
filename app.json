@@ -17,7 +17,9 @@
           "icon": "./assets/notification-icon.png",
           "color": "#ffffff"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -27,7 +29,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.marceloifran.kioskoapp",
@@ -35,15 +39,24 @@
       "infoPlist": {
         "CFBundleURLTypes": [
           {
-            "CFBundleURLSchemes": ["qrcodescanner", "com.marceloifran.kioskoapp"],
+            "CFBundleURLSchemes": [
+              "qrcodescanner",
+              "com.marceloifran.kioskoapp"
+            ],
             "CFBundleTypeRole": "Editor"
           }
         ],
-        "LSApplicationQueriesSchemes": ["mercadopago"],
+        "LSApplicationQueriesSchemes": [
+          "mercadopago"
+        ],
         "NSCameraUsageDescription": "Esta aplicación necesita acceso a la cámara para escanear códigos QR y códigos de barras.",
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       },
-      "associatedDomains": ["applinks:qrcodescanner.app.link"]
+      "associatedDomains": [
+        "applinks:qrcodescanner.app.link"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -76,7 +89,10 @@
               "host": "*.qrcodescanner.app.link"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },

@@ -16,7 +16,7 @@ Notifications.setNotificationHandler({
 export async function registerForPushNotificationsAsync() {
   let token;
   
-  if (Device.isDevice) {
+  if (Platform.OS !== 'web' && Device.isDevice) {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
     
@@ -42,7 +42,7 @@ export async function registerForPushNotificationsAsync() {
         lastUpdated: new Date()
       }, { merge: true });
     }
-  } else {
+  } else if (Platform.OS !== 'web') {
     alert('Las notificaciones push requieren un dispositivo físico');
   }
 
@@ -61,6 +61,10 @@ export async function registerForPushNotificationsAsync() {
 
 // Función para enviar notificación local
 export async function sendLocalNotification(title, body, data = {}) {
+  if (Platform.OS === 'web') {
+    console.log('Notificación local (Web):', title, body, data);
+    return;
+  }
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
@@ -114,4 +118,4 @@ export async function checkAndNotifyLowStock(product) {
   } catch (error) {
     console.error('Error al verificar o enviar notificación de stock bajo:', error);
   }
-} 
+}
